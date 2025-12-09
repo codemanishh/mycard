@@ -1,0 +1,5 @@
+-- Update assignment_status to include more granular states
+-- existing values: 'open' | 'pending' | 'accepted' | 'rejected' | 'closed'
+-- new workflow: open -> pending (assigned) -> accepted (acknowledged) -> wip (work in progress) -> closed (done)
+-- also support: rejected (when assigner/assignee declines)
+-- This migration is just for documentation; the existing assignment_status field supports all these values

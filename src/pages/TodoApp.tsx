@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,9 +17,20 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { 
   ArrowLeft, Plus, Search, Edit2, Trash2, Calendar, 
   Flag, Tag, CheckCircle2, Circle, Loader2, X,
-  ListTodo, Clock
+  ListTodo, Clock, Mic, MicOff
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { generateTaskSummary, suggestNextActions } from '@/lib/aiUtils';
+
+interface Subtask {
+  id: string;
+  todo_id: string;
+  title: string;
+  is_completed: boolean;
+  order_index: number;
+  created_at: string;
+}
 
 interface Todo {
   id: string;
@@ -25,10 +38,23 @@ interface Todo {
   description?: string;
   due_date?: string;
   expected_completion_date?: string;
+  assigned_to?: string | null;
+  assigned_by?: string | null;
+  assignment_status?: string | null; // open | pending | accepted | rejected | closed
+  assigned_at?: string | null;
+  accepted_at?: string | null;
   priority: 'low' | 'medium' | 'high';
   category?: string;
   is_completed: boolean;
+  is_deleted?: boolean | null;
+  deleted_by?: string | null;
+  deleted_at?: string | null;
+  recurrence_pattern?: string | null; // 'daily' | 'weekly' | 'monthly' | 'yearly'
+  recurrence_end_date?: string | null;
+  parent_todo_id?: string | null;
+  is_template?: boolean | null;
   created_at: string;
+  subtasks?: Subtask[];
 }
 
 const CATEGORIES = ['Work', 'Personal', 'Shopping', 'Health', 'Finance', 'Other'];
@@ -104,6 +130,8 @@ const TodoApp = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { transcript, isListening, startListening, stopListening, clearTranscript, setTranscript } = useVoiceInput();
+  const isOnline = useOnlineStatus();
   
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,22 +139,47 @@ const TodoApp = () => {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showCompleted, setShowCompleted] = useState(true);
+  const [activeTab, setActiveTab] = useState<'all' | 'assigned_to_me' | 'assigned_by_me' | 'deleted'>('all');
   
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
+  const [showSubtasks, setShowSubtasks] = useState<string | null>(null); // ID of todo showing subtasks
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [upcomingReminders, setUpcomingReminders] = useState<Array<{ id: string; title: string; scheduled_at: string }>>([]);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     due_date: '',
     expected_completion_date: '',
+    assignee_email: '',
+    assigned_to: '',
     priority: 'medium' as 'low' | 'medium' | 'high',
     category: '',
+    recurrence_pattern: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
+    is_template: false,
   });
+
+  const [assigneeProfile, setAssigneeProfile] = useState<{ id: string; full_name?: string; avatar_url?: string; email?: string } | null>(null);
+  const [profileCache, setProfileCache] = useState<Record<string, { full_name?: string; avatar_url?: string; email?: string }>>({});
 
   useEffect(() => {
     if (user) fetchTodos();
   }, [user]);
+
+  const getProfileById = async (userId: string) => {
+    if (profileCache[userId]) return profileCache[userId];
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, email')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!error && data) {
+      setProfileCache(prev => ({ ...prev, [userId]: data }));
+      return data;
+    }
+    return null;
+  };
 
   const fetchTodos = async () => {
     const { data, error } = await supabase
@@ -141,11 +194,71 @@ const TodoApp = () => {
         description: t.description || undefined,
         due_date: t.due_date || undefined,
         expected_completion_date: t.expected_completion_date || undefined,
+        assigned_to: t.assigned_to || undefined,
+        assigned_by: t.assigned_by || undefined,
+        assignment_status: t.assignment_status || undefined,
+        assigned_at: t.assigned_at || undefined,
+        accepted_at: t.accepted_at || undefined,
+        is_deleted: t.is_deleted || false,
+        deleted_by: t.deleted_by || undefined,
+        deleted_at: t.deleted_at || undefined,
+        recurrence_pattern: t.recurrence_pattern || undefined,
+        recurrence_end_date: t.recurrence_end_date || undefined,
+        parent_todo_id: t.parent_todo_id || undefined,
+        is_template: t.is_template || false,
         category: t.category || undefined,
+        subtasks: [],
       }));
-      setTodos(mappedTodos);
+
+      // Fetch subtasks for all todos
+      const { data: subtasksData } = await supabase
+        .from('subtasks')
+        .select('*')
+        .in('todo_id', mappedTodos.map(t => t.id));
+
+      if (subtasksData) {
+        const subtasksByTodo = subtasksData.reduce((acc: Record<string, Subtask[]>, s) => {
+          if (!acc[s.todo_id]) acc[s.todo_id] = [];
+          acc[s.todo_id].push(s);
+          return acc;
+        }, {});
+
+        const todosWithSubtasks = mappedTodos.map(t => ({
+          ...t,
+          subtasks: (subtasksByTodo[t.id] || []).sort((a, b) => a.order_index - b.order_index),
+        }));
+        setTodos(todosWithSubtasks);
+      } else {
+        setTodos(mappedTodos);
+      }
+
+      // Pre-fetch assignee profiles
+      const assigneeIds = [...new Set(mappedTodos.map(t => t.assigned_to).filter(Boolean))];
+      for (const id of assigneeIds) {
+        await getProfileById(id as string);
+      }
     }
     setLoading(false);
+  };
+
+  const lookupProfileByEmail = async (email: string) => {
+    if (!email || !email.includes('@')) {
+      setAssigneeProfile(null);
+      return null;
+    }
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url, email')
+      .ilike('email', email)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data) {
+      setAssigneeProfile(data as any);
+      return data as any;
+    }
+    setAssigneeProfile(null);
+    return null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -160,8 +273,14 @@ const TodoApp = () => {
           description: formData.description || null,
           due_date: formData.due_date || null,
           expected_completion_date: formData.expected_completion_date || null,
+          assigned_to: formData.assigned_to || null,
+          assigned_by: formData.assigned_to ? user.id : null,
+          assignment_status: formData.assigned_to ? 'pending' : 'open',
+          assigned_at: formData.assigned_to ? new Date().toISOString() : null,
           priority: formData.priority,
           category: formData.category || null,
+          recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
+          is_template: (formData as any).is_template,
         })
         .eq('id', editingTodo.id);
 
@@ -185,6 +304,8 @@ const TodoApp = () => {
           expected_completion_date: formData.expected_completion_date || null,
           priority: formData.priority,
           category: formData.category || null,
+          recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
+          is_template: (formData as any).is_template,
         })
         .select()
         .single();
@@ -196,6 +317,11 @@ const TodoApp = () => {
           description: data.description || undefined,
           due_date: data.due_date || undefined,
           expected_completion_date: data.expected_completion_date || undefined,
+          assigned_to: data.assigned_to || undefined,
+          assigned_by: data.assigned_by || undefined,
+          assignment_status: data.assignment_status || undefined,
+          assigned_at: data.assigned_at || undefined,
+          accepted_at: data.accepted_at || undefined,
           category: data.category || undefined,
         };
         setTodos(sortTodosByPriorityAndDate([newTodo, ...todos]));
@@ -204,6 +330,34 @@ const TodoApp = () => {
     }
 
     closeDialog();
+  };
+
+  const respondToAssignment = async (todo: Todo, action: 'accept' | 'reject' | 'wip' | 'closed') => {
+    if (!user) return;
+    // Only assignee can accept/reject/wip, but both can close
+    if (action !== 'closed' && user.id !== todo.assigned_to) return;
+    if (action === 'closed' && user.id !== todo.assigned_to && user.id !== todo.assigned_by) return;
+
+    const statusMap: Record<string, string> = {
+      accept: 'accepted',
+      reject: 'rejected',
+      wip: 'wip',
+      closed: 'closed',
+    };
+    const status = statusMap[action];
+    const updates: any = { assignment_status: status };
+    if (action === 'accept') updates.accepted_at = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('todos')
+      .update(updates)
+      .eq('id', todo.id);
+
+    if (!error) {
+      const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, assignment_status: status } : t);
+      setTodos(sortTodosByPriorityAndDate(updatedTodos));
+      toast({ title: `Assignment ${status}` });
+    }
   };
 
   const toggleComplete = async (todo: Todo) => {
@@ -221,16 +375,174 @@ const TodoApp = () => {
   };
 
   const deleteTodo = async (id: string) => {
+    if (!user) return;
     const { error } = await supabase
       .from('todos')
-      .delete()
+      .update({
+        is_deleted: true,
+        deleted_by: user.id,
+        deleted_at: new Date().toISOString(),
+      })
       .eq('id', id);
 
     if (!error) {
-      setTodos(todos.filter(t => t.id !== id));
+      const updatedTodos = todos.map(t => 
+        t.id === id 
+          ? { ...t, is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() }
+          : t
+      );
+      setTodos(sortTodosByPriorityAndDate(updatedTodos));
       toast({ title: 'Task Deleted' });
     }
   };
+
+  const restoreTodo = async (id: string) => {
+    const { error } = await supabase
+      .from('todos')
+      .update({
+        is_deleted: false,
+        deleted_by: null,
+        deleted_at: null,
+      })
+      .eq('id', id);
+
+    if (!error) {
+      const updatedTodos = todos.map(t => 
+        t.id === id 
+          ? { ...t, is_deleted: false, deleted_by: undefined, deleted_at: undefined }
+          : t
+      );
+      setTodos(sortTodosByPriorityAndDate(updatedTodos));
+      toast({ title: 'Task Restored' });
+    }
+  };
+
+  const addSubtask = async (todoId: string, title: string) => {
+    if (!title.trim()) return;
+    const { data, error } = await supabase
+      .from('subtasks')
+      .insert({
+        todo_id: todoId,
+        title: title.trim(),
+        is_completed: false,
+        order_index: (todos.find(t => t.id === todoId)?.subtasks?.length || 0),
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      const updatedTodos = todos.map(t => 
+        t.id === todoId 
+          ? { ...t, subtasks: [...(t.subtasks || []), data] }
+          : t
+      );
+      setTodos(updatedTodos);
+      setNewSubtaskTitle('');
+    }
+  };
+
+  const toggleSubtask = async (subtaskId: string, isCompleted: boolean) => {
+    const { error } = await supabase
+      .from('subtasks')
+      .update({ is_completed: !isCompleted })
+      .eq('id', subtaskId);
+
+    if (!error) {
+      const updatedTodos = todos.map(t => ({
+        ...t,
+        subtasks: t.subtasks?.map(s => s.id === subtaskId ? { ...s, is_completed: !isCompleted } : s) || [],
+      }));
+      setTodos(updatedTodos);
+    }
+  };
+
+  const deleteSubtask = async (subtaskId: string, todoId: string) => {
+    const { error } = await supabase
+      .from('subtasks')
+      .delete()
+      .eq('id', subtaskId);
+
+    if (!error) {
+      const updatedTodos = todos.map(t => 
+        t.id === todoId 
+          ? { ...t, subtasks: t.subtasks?.filter(s => s.id !== subtaskId) || [] }
+          : t
+      );
+      setTodos(updatedTodos);
+    }
+  };
+
+  const createReminder = async (todoId: string, scheduledAt: Date) => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('reminders')
+      .insert({
+        todo_id: todoId,
+        user_id: user.id,
+        scheduled_at: scheduledAt.toISOString(),
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      toast({ title: 'Reminder set' });
+      fetchReminders();
+    }
+  };
+
+  const snoozeReminder = async (reminderId: string, snoozeMinutes: number) => {
+    const snoozeUntil = new Date(Date.now() + snoozeMinutes * 60 * 1000).toISOString();
+    const { error } = await supabase
+      .from('reminders')
+      .update({ snoozed_until: snoozeUntil })
+      .eq('id', reminderId);
+
+    if (!error) {
+      toast({ title: `Reminder snoozed for ${snoozeMinutes} minutes` });
+      fetchReminders();
+    }
+  };
+
+  const dismissReminder = async (reminderId: string) => {
+    const { error } = await supabase
+      .from('reminders')
+      .update({ is_dismissed: true })
+      .eq('id', reminderId);
+
+    if (!error) {
+      fetchReminders();
+    }
+  };
+
+  const fetchReminders = async () => {
+    if (!user) return;
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('reminders')
+      .select('r:*, t:todos(id, title)')
+      .eq('user_id', user.id)
+      .eq('is_dismissed', false)
+      .lte('scheduled_at', now)
+      .or(`snoozed_until.is.null, snoozed_until.lte.${now}`);
+
+    if (!error && data) {
+      const reminders = data.map((r: any) => ({
+        id: r.id,
+        title: r.t?.title || 'Task',
+        scheduled_at: r.scheduled_at,
+      }));
+      setUpcomingReminders(reminders);
+    }
+  };
+
+  // Fetch reminders on load
+  useEffect(() => {
+    if (user) fetchReminders();
+    const interval = setInterval(() => {
+      if (user) fetchReminders();
+    }, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [user]);
 
   const openEditDialog = (todo: Todo) => {
     setEditingTodo(todo);
@@ -253,10 +565,19 @@ const TodoApp = () => {
 
   const filteredTodos = sortTodosByPriorityAndDate(
     todos.filter(todo => {
+      // Tabs filtering (deleted overrides others)
+      if (activeTab === 'deleted') {
+        return todo.is_deleted === true;
+      }
+      if (todo.is_deleted === true) return false; // Hide deleted in other tabs
+      
       if (!showCompleted && todo.is_completed) return false;
       if (filterCategory !== 'all' && todo.category !== filterCategory) return false;
       if (filterPriority !== 'all' && todo.priority !== filterPriority) return false;
       if (searchQuery && !todo.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      // Tabs filtering
+      if (activeTab === 'assigned_to_me' && (!user || todo.assigned_to !== user.id)) return false;
+      if (activeTab === 'assigned_by_me' && (!user || todo.assigned_by !== user.id)) return false;
       return true;
     })
   );
@@ -272,10 +593,10 @@ const TodoApp = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="gradient-hero text-white relative overflow-hidden">
+      <header className="gradient-hero text-white relative overflow-hidden backdrop-blur-md bg-gradient-to-br from-primary/90 to-primary/70 dark:from-slate-900/95 dark:to-slate-800/80">
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
-          <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-white/10 rounded-full blur-3xl" />
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
         </div>
         
         <div className="relative max-w-6xl mx-auto p-6">
@@ -295,6 +616,7 @@ const TodoApp = () => {
               <div>
                 <h1 className="text-xl font-bold tracking-tight">Todo App</h1>
                 <p className="text-xs text-white/70">Stay organized</p>
+                {!isOnline && <p className="text-xs text-warning mt-1">📡 Offline Mode</p>}
               </div>
             </div>
           </div>
@@ -320,56 +642,108 @@ const TodoApp = () => {
       </header>
 
       <main className="max-w-6xl mx-auto p-4 md:p-6 -mt-4 relative z-10">
-        {/* Task Summary */}
-        {!loading && topPriorityTasks.length > 0 && (
-          <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in bg-gradient-to-br from-primary/5 to-primary/2 border-primary/20">
-            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 text-primary">
-              <ListTodo className="w-4 h-4" />
-              Top Priority Tasks
-            </h3>
-            <div className="space-y-2">
-              {topPriorityTasks.map((task, idx) => {
-                const daysLeft = daysUntilDue(task.expected_completion_date || task.due_date);
-                const isOverdue = daysLeft !== null && daysLeft < 0;
-                const dueSoon = daysLeft !== null && daysLeft <= 3 && daysLeft >= 0;
-                
-                return (
-                  <div key={task.id} className="flex items-start gap-3 p-2 rounded-lg bg-white/50 dark:bg-slate-950/50 hover:bg-white/80 dark:hover:bg-slate-900/50 transition-colors">
-                    <span className="text-xs font-bold text-primary mt-1 min-w-fit">#{idx + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium line-clamp-1">{task.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[task.priority]}`}>
-                          <Flag className="w-3 h-3 mr-1" />
-                          {task.priority}
-                        </Badge>
-                        {(task.expected_completion_date || task.due_date) && (
-                          <Badge 
-                            variant="outline" 
-                            className={`text-xs ${
-                              isOverdue ? 'bg-destructive/20 text-destructive border-destructive/30' :
-                              dueSoon ? 'bg-warning/20 text-warning border-warning/30' :
-                              'bg-success/20 text-success border-success/30'
-                            }`}
-                          >
-                            <Calendar className="w-3 h-3 mr-1" />
-                            {isToday(task.expected_completion_date || task.due_date) ? 'Today' :
-                             isOverdue ? `${Math.abs(daysLeft!)} days overdue` :
-                             daysLeft === 0 ? 'Due today' :
-                             `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
+        {/* Reminders Notifications */}
+        {upcomingReminders.length > 0 && (
+          <div className="mb-4 space-y-2">
+            {upcomingReminders.map((reminder) => (
+              <Card key={reminder.id} className="p-3 bg-warning/10 border-warning/30 rounded-xl animate-fade-in">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">🔔 Reminder: {reminder.title}</p>
                   </div>
-                );
-              })}
-            </div>
-          </Card>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => snoozeReminder(reminder.id, 5)}>5m</Button>
+                    <Button size="sm" variant="ghost" onClick={() => snoozeReminder(reminder.id, 15)}>15m</Button>
+                    <Button size="sm" variant="ghost" onClick={() => dismissReminder(reminder.id)}>✕</Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="mb-4">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="assigned_to_me">Assigned to me <span className="ml-2 text-xs text-muted-foreground">{user ? todos.filter(t => t.assigned_to === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
+              <TabsTrigger value="assigned_by_me">Assigned by me <span className="ml-2 text-xs text-muted-foreground">{user ? todos.filter(t => t.assigned_by === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
+              <TabsTrigger value="deleted">Deleted <span className="ml-2 text-xs text-muted-foreground">{todos.filter(t => t.is_deleted).length}</span></TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {/* AI Insights & Suggestions */}
+        {!loading && todos.length > 0 && (
+          <>
+            {suggestNextActions(todos).length > 0 && (
+              <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in bg-gradient-to-br from-blue/5 to-blue/2 border-blue/20 backdrop-blur-sm hover:shadow-elevated transition-all duration-300">
+                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  🤖 AI Insights
+                </h3>
+                <div className="space-y-2">
+                  {suggestNextActions(todos).map((suggestion, idx) => (
+                    <p key={idx} className="text-xs text-muted-foreground leading-relaxed">
+                      {suggestion}
+                    </p>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Task Summary */}
+            {topPriorityTasks.length > 0 && (
+              <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in bg-gradient-to-br from-primary/5 to-primary/2 border-primary/20 backdrop-blur-sm hover:shadow-elevated transition-all duration-300">
+                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 text-primary">
+                  <ListTodo className="w-4 h-4" />
+                  Top Priority Tasks
+                </h3>
+                <div className="space-y-2">
+                  {topPriorityTasks.map((task, idx) => {
+                    const daysLeft = daysUntilDue(task.expected_completion_date || task.due_date);
+                    const isOverdue = daysLeft !== null && daysLeft < 0;
+                    const dueSoon = daysLeft !== null && daysLeft <= 3 && daysLeft >= 0;
+                    
+                    return (
+                      <div key={task.id} className="flex items-start gap-3 p-2 rounded-lg bg-white/50 dark:bg-slate-950/50 hover:bg-white/80 dark:hover:bg-slate-900/50 transition-colors">
+                        <span className="text-xs font-bold text-primary mt-1 min-w-fit">#{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium line-clamp-1">{task.title}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[task.priority]}`}>
+                              <Flag className="w-3 h-3 mr-1" />
+                              {task.priority}
+                            </Badge>
+                            {(task.expected_completion_date || task.due_date) && (
+                              <Badge 
+                                variant="outline" 
+                                className={`text-xs ${
+                                  isOverdue ? 'bg-destructive/20 text-destructive border-destructive/30' :
+                                  dueSoon ? 'bg-warning/20 text-warning border-warning/30' :
+                                  'bg-success/20 text-success border-success/30'
+                                }`}
+                              >
+                                <Calendar className="w-3 h-3 mr-1" />
+                                {isToday(task.expected_completion_date || task.due_date) ? 'Today' :
+                                 isOverdue ? `${Math.abs(daysLeft!)} days overdue` :
+                                 daysLeft === 0 ? 'Due today' :
+                                 `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+          </>
         )}
 
         {/* Search & Filters */}
-        <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in">
+        <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 hover:shadow-elevated transition-all duration-300">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -423,7 +797,7 @@ const TodoApp = () => {
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : filteredTodos.length === 0 ? (
-          <Card className="p-12 text-center shadow-card border-border/50 rounded-3xl animate-fade-in">
+          <Card className="p-12 text-center shadow-card border-border/50 rounded-3xl animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 hover:shadow-elevated transition-all duration-300">
             <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-primary/10 flex items-center justify-center">
               <ListTodo className="w-10 h-10 text-primary" />
             </div>
@@ -443,7 +817,7 @@ const TodoApp = () => {
             {filteredTodos.map((todo, index) => (
               <Card 
                 key={todo.id}
-                className={`p-4 shadow-card border-border/50 rounded-2xl transition-all duration-300 hover:shadow-elevated animate-fade-in ${
+                className={`p-4 shadow-card border-border/50 rounded-2xl transition-all duration-300 hover:shadow-elevated hover:scale-[1.01] hover:border-primary/30 animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 ${
                   todo.is_completed ? 'opacity-60' : ''
                 }`}
                 style={{ animationDelay: `${index * 50}ms` }}
@@ -466,22 +840,36 @@ const TodoApp = () => {
                         {todo.title}
                       </h3>
                       <div className="flex items-center gap-1 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary"
-                          onClick={() => openEditDialog(todo)}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => deleteTodo(todo.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {!todo.is_deleted && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary"
+                              onClick={() => openEditDialog(todo)}
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => deleteTodo(todo.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
+                        {todo.is_deleted && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 rounded-lg hover:bg-success/10 hover:text-success"
+                            onClick={() => restoreTodo(todo.id)}
+                          >
+                            Restore
+                          </Button>
+                        )}
                       </div>
                     </div>
                     
@@ -490,6 +878,11 @@ const TodoApp = () => {
                         {todo.description}
                       </p>
                     )}
+
+                    {/* AI Summary */}
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      {generateTaskSummary(todo)}
+                    </p>
                     
                     <div className="flex flex-wrap items-center gap-2 mt-2">
                       <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[todo.priority]}`}>
@@ -510,7 +903,117 @@ const TodoApp = () => {
                           {format(new Date(todo.due_date), 'MMM d')}
                         </Badge>
                       )}
+
+                      {todo.recurrence_pattern && (
+                        <Badge variant="outline" className="text-xs">
+                          🔄 {todo.recurrence_pattern}
+                        </Badge>
+                      )}
+
+                      {todo.is_template && (
+                        <Badge variant="outline" className="text-xs">
+                          📋 Template
+                        </Badge>
+                      )}
                     </div>
+                    {/* Assignment status + actions */}
+                    {todo.assignment_status && (
+                      <div className="mt-2">
+                        <Badge variant="outline" className="text-xs">{todo.assignment_status}</Badge>
+                      </div>
+                    )}
+
+                    {todo.assigned_to && (
+                      <div className="mt-2 flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          {profileCache[todo.assigned_to] ? (
+                            <>
+                              <div className="w-6 h-6 rounded-full bg-muted-foreground/20 flex items-center justify-center text-xs font-medium overflow-hidden">
+                                {profileCache[todo.assigned_to].avatar_url ? (
+                                  <img src={profileCache[todo.assigned_to].avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                  <span>{profileCache[todo.assigned_to].full_name ? profileCache[todo.assigned_to].full_name.charAt(0) : '?'}</span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">Assigned to: <span className="font-medium">{profileCache[todo.assigned_to].full_name || profileCache[todo.assigned_to].email}</span></p>
+                            </>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">Assigned to: <span className="font-medium">{todo.assigned_to.slice(0, 8)}</span></p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {user && user.id === todo.assigned_to && todo.assignment_status === 'pending' && (
+                            <>
+                              <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'accept')}>Accept</Button>
+                              <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'reject')}>Reject</Button>
+                            </>
+                          )}
+                          {user && user.id === todo.assigned_to && todo.assignment_status === 'accepted' && (
+                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'wip')}>Start Work</Button>
+                          )}
+                          {user && user.id === todo.assigned_to && todo.assignment_status === 'wip' && (
+                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'closed')}>Mark Done</Button>
+                          )}
+                          {(user?.id === todo.assigned_to || user?.id === todo.assigned_by) && ['pending', 'accepted', 'wip'].includes(todo.assignment_status || '') && (
+                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'closed')}>Close</Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Subtasks */}
+                    {!todo.is_deleted && (todo.subtasks?.length || 0) > 0 && (
+                      <div className="mt-3 pt-2 border-t border-border/30">
+                        <button
+                          onClick={() => setShowSubtasks(showSubtasks === todo.id ? null : todo.id)}
+                          className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                        >
+                          ✓ {todo.subtasks?.filter(s => s.is_completed).length}/{todo.subtasks?.length} Subtasks
+                        </button>
+                        {showSubtasks === todo.id && (
+                          <div className="mt-2 space-y-2 max-h-48 overflow-y-auto">
+                            {todo.subtasks?.map(subtask => (
+                              <div key={subtask.id} className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={subtask.is_completed}
+                                  onCheckedChange={() => toggleSubtask(subtask.id, subtask.is_completed)}
+                                  className="w-4 h-4"
+                                />
+                                <span className={`text-xs flex-1 ${subtask.is_completed ? 'line-through text-muted-foreground' : ''}`}>{subtask.title}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={() => deleteSubtask(subtask.id, todo.id)}
+                                >
+                                  <X className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-2 mt-2">
+                              <Input
+                                value={newSubtaskTitle}
+                                onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter') {
+                                    addSubtask(todo.id, newSubtaskTitle);
+                                  }
+                                }}
+                                placeholder="Add subtask..."
+                                className="text-xs h-7"
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => addSubtask(todo.id, newSubtaskTitle)}
+                              >
+                                +
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -540,14 +1043,53 @@ const TodoApp = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label>Title *</Label>
+              <div className="flex items-center justify-between">
+                <Label>Title *</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => isListening ? stopListening() : startListening()}
+                  className="text-xs"
+                >
+                  {isListening ? (
+                    <>
+                      <MicOff className="w-4 h-4 mr-1" />
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-4 h-4 mr-1" />
+                      Voice
+                    </>
+                  )}
+                </Button>
+              </div>
               <Input
-                value={formData.title}
+                value={formData.title || transcript}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="What needs to be done?"
                 className="rounded-xl"
                 autoFocus
               />
+              {transcript && (
+                <div className="text-xs text-muted-foreground flex items-center justify-between">
+                  <span>Listening: {transcript.slice(0, 50)}...</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setFormData({ ...formData, title: transcript });
+                      clearTranscript();
+                      stopListening();
+                    }}
+                    className="text-xs"
+                  >
+                    Use
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -615,6 +1157,102 @@ const TodoApp = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label>Assign To (email)</Label>
+              <Input
+                value={(formData as any).assignee_email}
+                onChange={async (e) => {
+                  const email = e.target.value;
+                  setFormData({ ...formData, assignee_email: email, assigned_to: '' });
+                  await lookupProfileByEmail(email);
+                }}
+                onBlur={async (e) => {
+                  const email = e.target.value;
+                  const profile = await lookupProfileByEmail(email);
+                  if (profile) {
+                    setFormData({ ...formData, assigned_to: profile.id, assignee_email: profile.email });
+                  }
+                }}
+                placeholder="Assignee email (optional)"
+                className="rounded-xl"
+              />
+              {assigneeProfile && (
+                <div className="flex items-center gap-3 mt-2">
+                  <div className="w-8 h-8 rounded-full bg-muted-foreground/10 flex items-center justify-center text-xs font-medium">{assigneeProfile.full_name ? assigneeProfile.full_name.charAt(0) : assigneeProfile.email?.charAt(0)}</div>
+                  <div className="text-sm">
+                    <div className="font-medium">{assigneeProfile.full_name || assigneeProfile.email}</div>
+                    <div className="text-xs text-muted-foreground">Matches profile</div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => { setFormData({ ...formData, assignee_email: '', assigned_to: '' }); setAssigneeProfile(null); }}>Clear</Button>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Recurrence</Label>
+              <Select 
+                value={(formData as any).recurrence_pattern} 
+                onValueChange={(v) => setFormData({ ...formData, recurrence_pattern: v as any })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="yearly">Yearly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Checkbox 
+                  id="is-template"
+                  checked={(formData as any).is_template}
+                  onCheckedChange={(c) => setFormData({ ...formData, is_template: c as boolean })}
+                />
+                <Label htmlFor="is-template" className="text-sm cursor-pointer">Save as template</Label>
+              </div>
+            </div>
+
+            {editingTodo && (
+              <div className="space-y-2">
+                <Label>Set Reminder</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => createReminder(editingTodo.id, new Date(Date.now() + 5 * 60000))}
+                    className="text-xs"
+                  >
+                    5 min
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => createReminder(editingTodo.id, new Date(Date.now() + 60 * 60000))}
+                    className="text-xs"
+                  >
+                    1 hour
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => createReminder(editingTodo.id, new Date(Date.now() + 24 * 60 * 60000))}
+                    className="text-xs"
+                  >
+                    1 day
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 pt-2">
               <Button type="button" variant="outline" onClick={closeDialog} className="flex-1 rounded-xl">
