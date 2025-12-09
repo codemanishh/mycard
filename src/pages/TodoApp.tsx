@@ -171,13 +171,13 @@ const TodoApp = () => {
   const getProfileById = async (userId: string) => {
     if (profileCache[userId]) return profileCache[userId];
     const { data, error } = await supabase
-      .from('profiles')
-      .select('id, email')
+      .from('public_profiles_view')
+      .select('id, email, full_name, avatar_url')
       .eq('id', userId)
       .maybeSingle();
     if (!error && data) {
-      // normalize to expected shape (may not have full_name/avatar_url yet)
-      const normalized = { full_name: (data as any).full_name, avatar_url: (data as any).avatar_url, email: (data as any).email };
+      // normalize shape
+      const normalized = { full_name: (data as any).full_name || undefined, avatar_url: (data as any).avatar_url || undefined, email: (data as any).email };
       setProfileCache(prev => ({ ...prev, [userId]: normalized }));
       return data;
     }
@@ -251,8 +251,8 @@ const TodoApp = () => {
     }
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('id, email')
+        .from('public_profiles_view')
+        .select('id, email, full_name, avatar_url')
         .ilike('email', email)
         .limit(1)
         .maybeSingle();
@@ -264,7 +264,7 @@ const TodoApp = () => {
         return null;
       }
       if (data) {
-        setAssigneeProfile({ id: (data as any).id, email: (data as any).email } as any);
+        setAssigneeProfile({ id: (data as any).id, email: (data as any).email, full_name: (data as any).full_name, avatar_url: (data as any).avatar_url } as any);
         return data as any;
       }
       setAssigneeProfile(null);
@@ -290,8 +290,8 @@ const TodoApp = () => {
     setProfileSearchLoading(true);
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('id, email')
+        .from('public_profiles_view')
+        .select('id, email, full_name, avatar_url')
         .ilike('email', `%${q}%`)
         .limit(5);
       setProfileSearchLoading(false);
@@ -301,7 +301,7 @@ const TodoApp = () => {
         setProfileSuggestions([]);
         return;
       }
-      setProfileSuggestions((data as any || []).map((d: any) => ({ id: d.id, email: d.email })));
+      setProfileSuggestions((data as any || []).map((d: any) => ({ id: d.id, email: d.email, full_name: d.full_name, avatar_url: d.avatar_url })));
     } catch (err: any) {
       setProfileSearchLoading(false);
       console.error('searchProfiles exception', err);
