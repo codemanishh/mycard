@@ -169,17 +169,17 @@ const TodoApp = () => {
   }, [user]);
 
   const getProfileById = async (userId: string) => {
+    // profileCache keys are auth user ids (profiles.user_id)
     if (profileCache[userId]) return profileCache[userId];
     const { data, error } = await supabase
       .from('public_profiles_view')
-      .select('id, email, full_name, avatar_url')
-      .eq('id', userId)
+      .select('user_id, id, email, full_name, avatar_url')
+      .eq('user_id', userId)
       .maybeSingle();
     if (!error && data) {
-      // normalize shape
       const normalized = { full_name: (data as any).full_name || undefined, avatar_url: (data as any).avatar_url || undefined, email: (data as any).email };
       setProfileCache(prev => ({ ...prev, [userId]: normalized }));
-      return data;
+      return normalized;
     }
     return null;
   };
@@ -236,6 +236,7 @@ const TodoApp = () => {
       }
 
       // Pre-fetch assignee profiles
+      // assigned_to stores auth user id (profiles.user_id). Pre-fetch those profiles.
       const assigneeIds = [...new Set(mappedTodos.map(t => t.assigned_to).filter(Boolean))];
       for (const id of assigneeIds) {
         await getProfileById(id as string);
@@ -252,7 +253,7 @@ const TodoApp = () => {
     try {
       const { data, error } = await supabase
         .from('public_profiles_view')
-        .select('id, email, full_name, avatar_url')
+        .select('user_id, id, email, full_name, avatar_url')
         .ilike('email', email)
         .limit(1)
         .maybeSingle();
@@ -264,7 +265,8 @@ const TodoApp = () => {
         return null;
       }
       if (data) {
-        setAssigneeProfile({ id: (data as any).id, email: (data as any).email, full_name: (data as any).full_name, avatar_url: (data as any).avatar_url } as any);
+        // store profile keyed by auth user id (user_id)
+        setAssigneeProfile({ id: (data as any).id, user_id: (data as any).user_id, email: (data as any).email, full_name: (data as any).full_name, avatar_url: (data as any).avatar_url } as any);
         return data as any;
       }
       setAssigneeProfile(null);
@@ -291,7 +293,7 @@ const TodoApp = () => {
     try {
       const { data, error } = await supabase
         .from('public_profiles_view')
-        .select('id, email, full_name, avatar_url')
+        .select('user_id, id, email, full_name, avatar_url')
         .ilike('email', `%${q}%`)
         .limit(5);
       setProfileSearchLoading(false);
@@ -301,7 +303,7 @@ const TodoApp = () => {
         setProfileSuggestions([]);
         return;
       }
-      setProfileSuggestions((data as any || []).map((d: any) => ({ id: d.id, email: d.email, full_name: d.full_name, avatar_url: d.avatar_url })));
+      setProfileSuggestions((data as any || []).map((d: any) => ({ user_id: d.user_id, id: d.id, email: d.email, full_name: d.full_name, avatar_url: d.avatar_url })));
     } catch (err: any) {
       setProfileSearchLoading(false);
       console.error('searchProfiles exception', err);
@@ -1279,9 +1281,11 @@ const TodoApp = () => {
                           key={p.id}
                           type="button"
                           className="w-full text-left px-3 py-2 hover:bg-muted-foreground/5"
-                          onClick={() => {
-                            setFormData({ ...formData, assigned_to: p.id, assignee_email: p.email, assignTo: true });
-                            setAssigneeProfile(p as any);
+                            onClick={() => {
+                            // use auth user id (user_id) for assigned_to so filtering matches auth.id
+                            setFormData({ ...formData, assigned_to: p.user_id || p.id, assignee_email: p.email, assignTo: true });
+                            // cache profile under user_id
+                            setAssigneeProfile({ id: p.id, user_id: p.user_id, email: p.email, full_name: p.full_name, avatar_url: p.avatar_url } as any);
                             setProfileSuggestions([]);
                           }}
                         >

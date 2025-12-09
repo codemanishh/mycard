@@ -3,7 +3,7 @@
 -- Grant SELECT on the view to the `authenticated` role so logged-in users can search it.
 
 CREATE OR REPLACE VIEW public.public_profiles_view AS
-SELECT id, email, full_name, avatar_url
+SELECT id, user_id, email, full_name, avatar_url
 FROM public.profiles;
 
 GRANT SELECT ON public.public_profiles_view TO authenticated;
