@@ -154,6 +154,7 @@ const TodoApp = () => {
     expected_completion_date: '',
     assignee_email: '',
     assigned_to: '',
+    assignTo: false,
     priority: 'medium' as 'low' | 'medium' | 'high',
     category: '',
     recurrence_pattern: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
@@ -261,9 +262,46 @@ const TodoApp = () => {
     return null;
   };
 
+  // Profile search/autocomplete (returns up to 5 matches)
+  const [profileSuggestions, setProfileSuggestions] = useState<Array<{ id: string; full_name?: string; email?: string; avatar_url?: string }>>([]);
+  const [profileSearchQuery, setProfileSearchQuery] = useState('');
+  const [profileSearchLoading, setProfileSearchLoading] = useState(false);
+
+  const searchProfiles = async (q: string) => {
+    if (!q || q.length < 2) {
+      setProfileSuggestions([]);
+      return;
+    }
+    setProfileSearchLoading(true);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, avatar_url')
+      .ilike('email', `%${q}%`)
+      .limit(5);
+    setProfileSearchLoading(false);
+    if (!error && data) {
+      setProfileSuggestions(data as any);
+    } else {
+      setProfileSuggestions([]);
+    }
+  };
+
+  // Debounced search when typing into assign input
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (formData.assignTo) searchProfiles(profileSearchQuery || formData.assignee_email);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [profileSearchQuery, formData.assignee_email, formData.assignTo]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim() || !user) return;
+    // If assign toggle is on, require a selected assignee
+    if ((formData as any).assignTo && !(formData as any).assigned_to) {
+      toast({ title: 'Please select a user to assign to' });
+      return;
+    }
 
     if (editingTodo) {
       const { error } = await supabase
@@ -558,6 +596,11 @@ const TodoApp = () => {
       expected_completion_date: todo.expected_completion_date || '',
       priority: todo.priority,
       category: todo.category || '',
+      assignee_email: todo.assigned_to ? (profileCache[todo.assigned_to]?.email || '') : '',
+      assigned_to: todo.assigned_to || '',
+      assignTo: !!todo.assigned_to,
+      recurrence_pattern: todo.recurrence_pattern || 'none',
+      is_template: todo.is_template || false,
     });
     setDialogOpen(true);
   };
@@ -565,7 +608,7 @@ const TodoApp = () => {
   const closeDialog = () => {
     setDialogOpen(false);
     setEditingTodo(null);
-    setFormData({ title: '', description: '', due_date: '', expected_completion_date: '', priority: 'medium', category: '' });
+    setFormData({ title: '', description: '', due_date: '', expected_completion_date: '', assignee_email: '', assigned_to: '', assignTo: false, priority: 'medium', category: '', recurrence_pattern: 'none', is_template: false });
   };
 
   const filteredTodos = sortTodosByPriorityAndDate(
@@ -1164,33 +1207,71 @@ const TodoApp = () => {
             </div>
 
             <div className="space-y-2">
-              <Label>Assign To (email)</Label>
-              <Input
-                value={(formData as any).assignee_email}
-                onChange={async (e) => {
-                  const email = e.target.value;
-                  setFormData({ ...formData, assignee_email: email, assigned_to: '' });
-                  await lookupProfileByEmail(email);
-                }}
-                onBlur={async (e) => {
-                  const email = e.target.value;
-                  const profile = await lookupProfileByEmail(email);
-                  if (profile) {
-                    setFormData({ ...formData, assigned_to: profile.id, assignee_email: profile.email });
-                  }
-                }}
-                placeholder="Assignee email (optional)"
-                className="rounded-xl"
-              />
-              {assigneeProfile && (
-                <div className="flex items-center gap-3 mt-2">
-                  <div className="w-8 h-8 rounded-full bg-muted-foreground/10 flex items-center justify-center text-xs font-medium">{assigneeProfile.full_name ? assigneeProfile.full_name.charAt(0) : assigneeProfile.email?.charAt(0)}</div>
-                  <div className="text-sm">
-                    <div className="font-medium">{assigneeProfile.full_name || assigneeProfile.email}</div>
-                    <div className="text-xs text-muted-foreground">Matches profile</div>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => { setFormData({ ...formData, assignee_email: '', assigned_to: '' }); setAssigneeProfile(null); }}>Clear</Button>
+              <div className="flex items-center justify-between">
+                <Label>Assign To (optional)</Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Assign to someone</span>
+                  <Checkbox
+                    id="assign-to-toggle"
+                    checked={(formData as any).assignTo}
+                    onCheckedChange={(c) => setFormData({ ...formData, assignTo: c as boolean, assigned_to: c ? (formData as any).assigned_to : '' , assignee_email: c ? (formData as any).assignee_email : '' })}
+                  />
                 </div>
+              </div>
+
+              {(formData as any).assignTo ? (
+                <div className="relative">
+                  <Input
+                    value={(formData as any).assignee_email}
+                    onChange={(e) => {
+                      const email = e.target.value;
+                      setFormData({ ...formData, assignee_email: email, assigned_to: '' });
+                      setProfileSearchQuery(email);
+                    }}
+                    placeholder="Start typing email to search users..."
+                    className="rounded-xl"
+                    autoComplete="off"
+                  />
+                  {/* Suggestions dropdown */}
+                  {profileSuggestions.length > 0 && (formData as any).assignee_email && (
+                    <div className="absolute z-20 mt-1 w-full bg-popover border border-border/20 rounded-lg shadow-md overflow-hidden">
+                      {profileSuggestions.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 hover:bg-muted-foreground/5"
+                          onClick={() => {
+                            setFormData({ ...formData, assigned_to: p.id, assignee_email: p.email, assignTo: true });
+                            setAssigneeProfile(p as any);
+                            setProfileSuggestions([]);
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-full bg-muted-foreground/10 flex items-center justify-center text-xs font-medium">{p.full_name ? p.full_name.charAt(0) : p.email?.charAt(0)}</div>
+                            <div className="text-sm">
+                              <div className="font-medium">{p.full_name || p.email}</div>
+                              <div className="text-xs text-muted-foreground">{p.email}</div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Fallback if a single exact match found after blur */}
+                  {assigneeProfile && (formData as any).assigned_to && (
+                    <div className="flex items-center gap-3 mt-2">
+                      <div className="w-8 h-8 rounded-full bg-muted-foreground/10 flex items-center justify-center text-xs font-medium">{assigneeProfile.full_name ? assigneeProfile.full_name.charAt(0) : assigneeProfile.email?.charAt(0)}</div>
+                      <div className="text-sm">
+                        <div className="font-medium">{assigneeProfile.full_name || assigneeProfile.email}</div>
+                        <div className="text-xs text-muted-foreground">Selected</div>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => { setFormData({ ...formData, assignee_email: '', assigned_to: '', assignTo: false }); setAssigneeProfile(null); setProfileSuggestions([]); }}>Clear</Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No assignee — task will be unassigned</p>
               )}
             </div>
 
