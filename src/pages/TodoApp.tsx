@@ -306,6 +306,11 @@ const TodoApp = () => {
           category: formData.category || null,
           recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
           is_template: (formData as any).is_template,
+          // Assignment fields: include when assigning at creation
+          assigned_to: (formData as any).assigned_to || null,
+          assigned_by: (formData as any).assigned_to ? user.id : null,
+          assignment_status: (formData as any).assigned_to ? 'pending' : 'open',
+          assigned_at: (formData as any).assigned_to ? new Date().toISOString() : null,
         })
         .select()
         .single();
