@@ -24,6 +24,7 @@ export interface Lending {
   amount: number;
   givenDate: string;
   reminderDate?: string;
+  borrowerPhone?: string;
   isReturned: boolean;
   note?: string;
   createdAt: string;

@@ -8,6 +8,7 @@ import { CardDetailsDialog } from '@/components/CardDetailsDialog';
 import { AddCardDialog } from '@/components/AddCardDialog';
 import { BankBalanceCard } from '@/components/BankBalanceCard';
 import { AddExpenseDialog } from '@/components/AddExpenseDialog';
+import { QuickExpenseDialog } from '@/components/QuickExpenseDialog';
 import { LendingDialog } from '@/components/LendingDialog';
 import { TransactionHistory } from '@/components/TransactionHistory';
 import { LendingList } from '@/components/LendingList';
@@ -44,7 +45,14 @@ const Index = () => {
   const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [quickExpenseDialogOpen, setQuickExpenseDialogOpen] = useState(false);
+  const [quickExpenseSource, setQuickExpenseSource] = useState<{
+    type: 'bank' | 'credit_card';
+    id: string;
+    name: string;
+  } | null>(null);
   const [lendingDialogOpen, setLendingDialogOpen] = useState(false);
+  const [editingLending, setEditingLending] = useState<Lending | null>(null);
   const [bankEditDialogOpen, setBankEditDialogOpen] = useState(false);
   const [bankAddDialogOpen, setBankAddDialogOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
@@ -127,6 +135,7 @@ const Index = () => {
           amount: Number(l.amount),
           givenDate: l.given_date,
           reminderDate: l.reminder_date || undefined,
+          borrowerPhone: l.borrower_phone || undefined,
           isReturned: l.is_returned || false,
           note: l.note || undefined,
           createdAt: l.created_at,
@@ -414,33 +423,66 @@ const Index = () => {
   const handleAddLending = async (lendingData: Omit<Lending, 'id' | 'createdAt' | 'isReturned'>) => {
     if (!user) return;
 
-    const { data, error } = await supabase
-      .from('lendings')
-      .insert({
-        user_id: user.id,
-        person_name: lendingData.personName,
-        amount: lendingData.amount,
-        given_date: lendingData.givenDate,
-        reminder_date: lendingData.reminderDate,
-        note: lendingData.note,
-        is_returned: false,
-      })
-      .select()
-      .single();
+    if (editingLending) {
+      const { error } = await supabase
+        .from('lendings')
+        .update({
+          person_name: lendingData.personName,
+          amount: lendingData.amount,
+          given_date: lendingData.givenDate,
+          reminder_date: lendingData.reminderDate,
+          borrower_phone: lendingData.borrowerPhone,
+          note: lendingData.note,
+        })
+        .eq('id', editingLending.id);
 
-    if (data && !error) {
-      const newLending: Lending = {
-        ...lendingData,
-        id: data.id,
-        isReturned: false,
-        createdAt: data.created_at,
-      };
-      setLendings([newLending, ...lendings]);
-      toast({
-        title: 'Lending Added',
-        description: `₹${lendingData.amount.toLocaleString('en-IN')} to ${lendingData.personName}`,
-      });
+      if (!error) {
+        setLendings(lendings.map(l => 
+          l.id === editingLending.id 
+            ? { ...lendingData, id: editingLending.id, isReturned: editingLending.isReturned, createdAt: editingLending.createdAt }
+            : l
+        ));
+        setEditingLending(null);
+        toast({
+          title: 'Lending Updated',
+          description: `Updated lending for ${lendingData.personName}`,
+        });
+      }
+    } else {
+      const { data, error } = await supabase
+        .from('lendings')
+        .insert({
+          user_id: user.id,
+          person_name: lendingData.personName,
+          amount: lendingData.amount,
+          given_date: lendingData.givenDate,
+          reminder_date: lendingData.reminderDate,
+          borrower_phone: lendingData.borrowerPhone,
+          note: lendingData.note,
+          is_returned: false,
+        })
+        .select()
+        .single();
+
+      if (data && !error) {
+        const newLending: Lending = {
+          ...lendingData,
+          id: data.id,
+          isReturned: false,
+          createdAt: data.created_at,
+        };
+        setLendings([newLending, ...lendings]);
+        toast({
+          title: 'Lending Added',
+          description: `₹${lendingData.amount.toLocaleString('en-IN')} to ${lendingData.personName}`,
+        });
+      }
     }
+  };
+
+  const handleEditLending = (lending: Lending) => {
+    setEditingLending(lending);
+    setLendingDialogOpen(true);
   };
 
   const handleMarkReturned = async (id: string) => {
@@ -473,6 +515,76 @@ const Index = () => {
         description: 'Lending record has been removed.',
       });
     }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    const expenseToDelete = expenses.find(e => e.id === id);
+    
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      setExpenses(expenses.filter(e => e.id !== id));
+      
+      // Restore balance if it was from a bank account
+      if (expenseToDelete && expenseToDelete.paymentMethod === 'bank') {
+        const bank = bankAccounts.find(acc => acc.id === expenseToDelete.paymentSourceId);
+        if (bank) {
+          const restoredBalance = bank.balance + expenseToDelete.amount;
+          await supabase
+            .from('bank_accounts')
+            .update({ balance: restoredBalance })
+            .eq('id', expenseToDelete.paymentSourceId);
+          
+          setBankAccounts(bankAccounts.map(acc => 
+            acc.id === expenseToDelete.paymentSourceId 
+              ? { ...acc, balance: restoredBalance }
+              : acc
+          ));
+        }
+      } else if (expenseToDelete && expenseToDelete.paymentMethod === 'credit_card') {
+        // Reduce credit card bill
+        const card = cards.find(c => c.id === expenseToDelete.paymentSourceId);
+        if (card) {
+          const updatedBill = Math.max(0, card.currentBill - expenseToDelete.amount);
+          await supabase
+            .from('credit_cards')
+            .update({ current_bill: updatedBill })
+            .eq('id', expenseToDelete.paymentSourceId);
+          
+          setCards(cards.map(c => 
+            c.id === expenseToDelete.paymentSourceId 
+              ? { ...c, currentBill: updatedBill }
+              : c
+          ));
+        }
+      }
+      
+      toast({
+        title: 'Expense Deleted',
+        description: `₹${expenseToDelete?.amount.toLocaleString('en-IN')} has been removed.`,
+      });
+    }
+  };
+
+  const handleQuickExpenseFromBank = (bank: BankAccount) => {
+    setQuickExpenseSource({
+      type: 'bank',
+      id: bank.id,
+      name: bank.bankName,
+    });
+    setQuickExpenseDialogOpen(true);
+  };
+
+  const handleQuickExpenseFromCard = (card: CreditCardType) => {
+    setQuickExpenseSource({
+      type: 'credit_card',
+      id: card.id,
+      name: `${card.bankName} ${card.cardName}`,
+    });
+    setQuickExpenseDialogOpen(true);
   };
 
   const handleUpdateBankBalance = async (bankId: string, newBalance: number) => {
@@ -583,7 +695,7 @@ const Index = () => {
           </div>
 
           {/* Bank Balances */}
-          <BankBalanceCard accounts={bankAccounts} />
+          <BankBalanceCard accounts={bankAccounts} onBankClick={handleQuickExpenseFromBank} />
           <div className="flex gap-2 mt-2 md:mt-3">
             <Button 
               onClick={() => setBankAddDialogOpen(true)}
@@ -759,7 +871,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="history" className="animate-fade-in">
-            <TransactionHistory expenses={expenses} />
+            <TransactionHistory expenses={expenses} onDeleteExpense={handleDeleteExpense} />
           </TabsContent>
 
           <TabsContent value="lending" className="animate-fade-in">
@@ -786,7 +898,7 @@ const Index = () => {
             </div>
             
             {lendingTab === 'pending' ? (
-              <LendingList lendings={lendings} onMarkReturned={handleMarkReturned} onDelete={handleDeleteLending} />
+              <LendingList lendings={lendings} onMarkReturned={handleMarkReturned} onDelete={handleDeleteLending} onEdit={handleEditLending} />
             ) : (
               <LendingHistory lendings={lendings} onDelete={handleDeleteLending} />
             )}
@@ -800,6 +912,7 @@ const Index = () => {
         onOpenChange={setDetailsOpen}
         onEdit={handleEditCard}
         onDelete={handleDeleteCard}
+        onAddExpense={handleQuickExpenseFromCard}
       />
 
       <AddCardDialog
@@ -819,8 +932,12 @@ const Index = () => {
 
       <LendingDialog
         open={lendingDialogOpen}
-        onOpenChange={setLendingDialogOpen}
+        onOpenChange={(open) => {
+          setLendingDialogOpen(open);
+          if (!open) setEditingLending(null);
+        }}
         onSave={handleAddLending}
+        editingLending={editingLending}
       />
 
       <EditBankDialog
@@ -843,6 +960,13 @@ const Index = () => {
         onOpenChange={setProfileDialogOpen}
         userId={user?.id || ''}
         userEmail={user?.email || ''}
+      />
+
+      <QuickExpenseDialog
+        open={quickExpenseDialogOpen}
+        onOpenChange={setQuickExpenseDialogOpen}
+        onSave={handleAddExpense}
+        paymentSource={quickExpenseSource}
       />
     </div>
   );

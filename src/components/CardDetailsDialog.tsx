@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, IndianRupee, CreditCard, AlertCircle, Edit, Trash2 } from 'lucide-react';
+import { Calendar, IndianRupee, CreditCard, AlertCircle, Edit, Trash2, Receipt } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CardDetailsDialogProps {
@@ -17,9 +17,10 @@ interface CardDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   onEdit: (card: CreditCardType) => void;
   onDelete: (id: string) => void;
+  onAddExpense: (card: CreditCardType) => void;
 }
 
-export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete }: CardDetailsDialogProps) => {
+export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, onAddExpense }: CardDetailsDialogProps) => {
   if (!card) return null;
 
   const getBillingDaysLeft = () => {
@@ -131,15 +132,23 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete }
 
           <div className="flex gap-2 pt-2">
             <Button 
+              className="flex-1 bg-primary hover:bg-primary/90"
+              onClick={() => {
+                onAddExpense(card);
+                onOpenChange(false);
+              }}
+            >
+              <Receipt className="w-4 h-4 mr-2" />
+              Spend
+            </Button>
+            <Button 
               variant="outline" 
-              className="flex-1"
               onClick={() => {
                 onEdit(card);
                 onOpenChange(false);
               }}
             >
-              <Edit className="w-4 h-4 mr-2" />
-              Edit
+              <Edit className="w-4 h-4" />
             </Button>
             <Button 
               variant="outline" 

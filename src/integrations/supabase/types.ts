@@ -134,6 +134,7 @@ export type Database = {
       lendings: {
         Row: {
           amount: number
+          borrower_phone: string | null
           created_at: string
           given_date: string
           id: string
@@ -145,6 +146,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          borrower_phone?: string | null
           created_at?: string
           given_date: string
           id?: string
@@ -156,6 +158,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          borrower_phone?: string | null
           created_at?: string
           given_date?: string
           id?: string

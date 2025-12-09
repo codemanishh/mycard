@@ -7,6 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { CreditCard } from '@/types/creditCard';
 import { useToast } from '@/hooks/use-toast';
+import { BankLogo } from './BankLogo';
+import { INDIAN_BANKS } from '@/lib/bankData';
+import { Search, Plus } from 'lucide-react';
 
 interface AddCardDialogProps {
   open: boolean;
@@ -15,19 +18,10 @@ interface AddCardDialogProps {
   editCard?: CreditCard | null;
 }
 
-const BANKS = [
-  'ICICI Bank',
-  'HDFC Bank',
-  'Axis Bank',
-  'BharatPe',
-  'SBI',
-  'Kotak',
-  'American Express',
-  'Other'
-];
-
 export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardDialogProps) => {
   const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [formData, setFormData] = useState<{
     bankName: string;
     cardName: string;
@@ -72,7 +66,15 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         notes: '',
       });
     }
+    setSearchQuery('');
+    setSelectedCategory('all');
   }, [editCard, open]);
+
+  const filteredBanks = INDIAN_BANKS.filter(bank => {
+    const matchesSearch = bank.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || bank.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,21 +107,65 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Bank Selection with Search */}
           <div className="space-y-2">
-            <Label htmlFor="bankName">Bank Name *</Label>
-            <Select 
-              value={formData.bankName} 
-              onValueChange={(value) => setFormData({ ...formData, bankName: value })}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select bank" />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                {BANKS.map((bank) => (
-                  <SelectItem key={bank} value={bank}>{bank}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Bank Name *</Label>
+            
+            {/* Search and Filter */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search banks..."
+                  className="pl-9 rounded-xl"
+                />
+              </div>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Banks</SelectItem>
+                  <SelectItem value="public">Public Sector</SelectItem>
+                  <SelectItem value="private">Private Sector</SelectItem>
+                  <SelectItem value="small-finance">Small Finance</SelectItem>
+                  <SelectItem value="payments">Payments Banks</SelectItem>
+                  <SelectItem value="foreign">Foreign Banks</SelectItem>
+                  <SelectItem value="other">Fintech/Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Bank List */}
+            <div className="max-h-40 overflow-y-auto space-y-1 border border-border/50 rounded-xl p-2">
+              {filteredBanks.map((bank) => (
+                <button
+                  key={bank.name}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, bankName: bank.name })}
+                  className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
+                    formData.bankName === bank.name 
+                      ? 'bg-primary/10 border border-primary/30' 
+                      : 'hover:bg-secondary'
+                  }`}
+                >
+                  <BankLogo bankName={bank.name} size="sm" />
+                  <span className="text-sm font-medium truncate">{bank.name}</span>
+                </button>
+              ))}
+              {filteredBanks.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-2">No banks found</p>
+              )}
+            </div>
+
+            {formData.bankName && (
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-lg">
+                <BankLogo bankName={formData.bankName} size="sm" />
+                <span className="text-sm font-medium">{formData.bankName}</span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

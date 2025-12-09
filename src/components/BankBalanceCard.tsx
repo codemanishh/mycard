@@ -4,9 +4,10 @@ import { BankLogo } from './BankLogo';
 
 interface BankBalanceCardProps {
   accounts: BankAccount[];
+  onBankClick?: (bank: BankAccount) => void;
 }
 
-export const BankBalanceCard = ({ accounts }: BankBalanceCardProps) => {
+export const BankBalanceCard = ({ accounts, onBankClick }: BankBalanceCardProps) => {
   const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
   
   return (
@@ -26,9 +27,10 @@ export const BankBalanceCard = ({ accounts }: BankBalanceCardProps) => {
       {accounts.length > 0 && (
         <div className="grid grid-cols-2 gap-2 md:gap-3">
           {accounts.map((account) => (
-            <div 
+            <button 
               key={account.id} 
-              className="bg-white/10 backdrop-blur-md rounded-lg md:rounded-xl p-2 md:p-3 border border-white/10 flex items-center gap-2 md:gap-3"
+              onClick={() => onBankClick?.(account)}
+              className="bg-white/10 backdrop-blur-md rounded-lg md:rounded-xl p-2 md:p-3 border border-white/10 flex items-center gap-2 md:gap-3 hover:bg-white/20 transition-colors text-left active:scale-95"
             >
               <BankLogo bankName={account.bankName} size="sm" />
               <div className="min-w-0 flex-1">
@@ -37,7 +39,7 @@ export const BankBalanceCard = ({ accounts }: BankBalanceCardProps) => {
                   ₹{account.balance.toLocaleString('en-IN')}
                 </p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

@@ -2,16 +2,17 @@ import { Lending } from '@/types/expense';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, Bell, User, Trash2 } from 'lucide-react';
+import { Check, Bell, User, Trash2, Pencil, Phone } from 'lucide-react';
 import { format, isToday, isPast } from 'date-fns';
 
 interface LendingListProps {
   lendings: Lending[];
   onMarkReturned: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (lending: Lending) => void;
 }
 
-export const LendingList = ({ lendings, onMarkReturned, onDelete }: LendingListProps) => {
+export const LendingList = ({ lendings, onMarkReturned, onDelete, onEdit }: LendingListProps) => {
   const pendingLendings = lendings.filter(l => !l.isReturned);
   const totalPending = pendingLendings.reduce((sum, l) => sum + l.amount, 0);
 
@@ -52,6 +53,12 @@ export const LendingList = ({ lendings, onMarkReturned, onDelete }: LendingListP
                         Given: {format(new Date(lending.givenDate), 'dd MMM yyyy')}
                         {lending.reminderDate && ` • Remind: ${format(new Date(lending.reminderDate), 'dd MMM')}`}
                       </p>
+                      {lending.borrowerPhone && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3" />
+                          {lending.borrowerPhone}
+                        </p>
+                      )}
                       {lending.note && (
                         <p className="text-xs text-muted-foreground mt-1">{lending.note}</p>
                       )}
@@ -59,7 +66,7 @@ export const LendingList = ({ lendings, onMarkReturned, onDelete }: LendingListP
                   </div>
                   <div className="text-right space-y-1">
                     <p className="font-semibold">₹{lending.amount.toLocaleString('en-IN')}</p>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap justify-end">
                       <Button 
                         size="sm" 
                         variant="ghost" 
@@ -68,6 +75,14 @@ export const LendingList = ({ lendings, onMarkReturned, onDelete }: LendingListP
                       >
                         <Check className="w-3 h-3 mr-1" />
                         Closed
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="text-xs h-7 px-2 text-primary hover:text-primary hover:bg-primary/10"
+                        onClick={() => onEdit(lending)}
+                      >
+                        <Pencil className="w-3 h-3" />
                       </Button>
                       <Button 
                         size="sm" 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,14 +9,38 @@ interface LendingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (lending: Omit<Lending, 'id' | 'createdAt' | 'isReturned'>) => void;
+  editingLending?: Lending | null;
 }
 
-export const LendingDialog = ({ open, onOpenChange, onSave }: LendingDialogProps) => {
+export const LendingDialog = ({ open, onOpenChange, onSave, editingLending }: LendingDialogProps) => {
   const [personName, setPersonName] = useState('');
   const [amount, setAmount] = useState('');
   const [givenDate, setGivenDate] = useState(new Date().toISOString().split('T')[0]);
   const [reminderDate, setReminderDate] = useState('');
+  const [borrowerPhone, setBorrowerPhone] = useState('');
   const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (editingLending) {
+      setPersonName(editingLending.personName);
+      setAmount(editingLending.amount.toString());
+      setGivenDate(editingLending.givenDate);
+      setReminderDate(editingLending.reminderDate || '');
+      setBorrowerPhone(editingLending.borrowerPhone || '');
+      setNote(editingLending.note || '');
+    } else {
+      resetForm();
+    }
+  }, [editingLending, open]);
+
+  const resetForm = () => {
+    setPersonName('');
+    setAmount('');
+    setGivenDate(new Date().toISOString().split('T')[0]);
+    setReminderDate('');
+    setBorrowerPhone('');
+    setNote('');
+  };
 
   const handleSave = () => {
     if (!personName || !amount) return;
@@ -26,14 +50,11 @@ export const LendingDialog = ({ open, onOpenChange, onSave }: LendingDialogProps
       amount: parseFloat(amount),
       givenDate,
       reminderDate: reminderDate || undefined,
+      borrowerPhone: borrowerPhone || undefined,
       note: note || undefined,
     });
 
-    setPersonName('');
-    setAmount('');
-    setGivenDate(new Date().toISOString().split('T')[0]);
-    setReminderDate('');
-    setNote('');
+    resetForm();
     onOpenChange(false);
   };
 
@@ -41,7 +62,7 @@ export const LendingDialog = ({ open, onOpenChange, onSave }: LendingDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Money Lent</DialogTitle>
+          <DialogTitle>{editingLending ? 'Edit Lending' : 'Add Money Lent'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -83,6 +104,19 @@ export const LendingDialog = ({ open, onOpenChange, onSave }: LendingDialogProps
           </div>
 
           <div>
+            <Label>Borrower's Phone (Optional)</Label>
+            <Input
+              type="tel"
+              placeholder="+91 9876543210"
+              value={borrowerPhone}
+              onChange={(e) => setBorrowerPhone(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              For in-app reminder notifications
+            </p>
+          </div>
+
+          <div>
             <Label>Note (Optional)</Label>
             <Input
               placeholder="Any note..."
@@ -92,7 +126,7 @@ export const LendingDialog = ({ open, onOpenChange, onSave }: LendingDialogProps
           </div>
 
           <Button onClick={handleSave} className="w-full" disabled={!personName || !amount}>
-            Add Entry
+            {editingLending ? 'Update Entry' : 'Add Entry'}
           </Button>
         </div>
       </DialogContent>

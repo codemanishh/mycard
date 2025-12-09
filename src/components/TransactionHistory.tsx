@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { Expense, EXPENSE_CATEGORIES } from '@/types/expense';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 interface TransactionHistoryProps {
   expenses: Expense[];
+  onDeleteExpense?: (id: string) => void;
 }
 
-export const TransactionHistory = ({ expenses }: TransactionHistoryProps) => {
+export const TransactionHistory = ({ expenses, onDeleteExpense }: TransactionHistoryProps) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const monthStart = startOfMonth(currentMonth);
@@ -57,18 +57,32 @@ export const TransactionHistory = ({ expenses }: TransactionHistoryProps) => {
           <p className="text-center text-muted-foreground py-4">No transactions this month</p>
         ) : (
           filteredExpenses.map((expense) => (
-            <Card key={expense.id} className="p-3">
+            <Card key={expense.id} className="p-3 group hover:bg-secondary/50 transition-colors">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{getCategoryEmoji(expense.category)}</span>
-                  <div>
-                    <p className="font-medium">{expense.storeName || expense.category}</p>
-                    <p className="text-xs text-muted-foreground">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <span className="text-2xl shrink-0">{getCategoryEmoji(expense.category)}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{expense.storeName || expense.category}</p>
+                    <p className="text-xs text-muted-foreground truncate">
                       {format(new Date(expense.date), 'dd MMM')} • {expense.paymentSourceName}
                     </p>
                   </div>
                 </div>
-                <p className="font-semibold text-destructive">-₹{expense.amount.toLocaleString('en-IN')}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-destructive whitespace-nowrap">
+                    -₹{expense.amount.toLocaleString('en-IN')}
+                  </p>
+                  {onDeleteExpense && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+                      onClick={() => onDeleteExpense(expense.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </Card>
           ))
