@@ -24,6 +24,7 @@ interface Todo {
   title: string;
   description?: string;
   due_date?: string;
+  expected_completion_date?: string;
   priority: 'low' | 'medium' | 'high';
   category?: string;
   is_completed: boolean;
@@ -35,6 +36,68 @@ const PRIORITY_COLORS = {
   low: 'bg-success/20 text-success border-success/30',
   medium: 'bg-warning/20 text-warning border-warning/30',
   high: 'bg-destructive/20 text-destructive border-destructive/30',
+};
+
+// Utility function to check if date is today
+const isToday = (dateString?: string): boolean => {
+  if (!dateString) return false;
+  const today = new Date();
+  const date = new Date(dateString);
+  return date.getFullYear() === today.getFullYear() &&
+         date.getMonth() === today.getMonth() &&
+         date.getDate() === today.getDate();
+};
+
+// Utility function to check if date is within this week
+const isThisWeek = (dateString?: string): boolean => {
+  if (!dateString) return false;
+  const date = new Date(dateString);
+  const today = new Date();
+  const weekFromToday = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return date >= today && date <= weekFromToday;
+};
+
+// Utility function to get days until due date
+const daysUntilDue = (dateString?: string): number | null => {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  const diff = date.getTime() - today.getTime();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+};
+
+// Utility function to sort todos with priority and date-based logic
+const sortTodosByPriorityAndDate = (todosToSort: Todo[]): Todo[] => {
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  
+  return [...todosToSort].sort((a, b) => {
+    // First, separate by priority
+    const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+    if (priorityDiff !== 0) return priorityDiff;
+
+    // Within same priority, prioritize by date
+    const aDays = daysUntilDue(a.expected_completion_date || a.due_date);
+    const bDays = daysUntilDue(b.expected_completion_date || b.due_date);
+
+    // Tasks with completion date today come first
+    const aIsToday = isToday(a.expected_completion_date || a.due_date);
+    const bIsToday = isToday(b.expected_completion_date || b.due_date);
+
+    if (aIsToday && !bIsToday) return -1;
+    if (!aIsToday && bIsToday) return 1;
+
+    // Then sort by nearest deadline
+    if (aDays !== null && bDays !== null) {
+      return aDays - bDays;
+    }
+    if (aDays !== null) return -1;
+    if (bDays !== null) return 1;
+
+    // Finally, sort by creation date
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 };
 
 const TodoApp = () => {
@@ -56,6 +119,7 @@ const TodoApp = () => {
     title: '',
     description: '',
     due_date: '',
+    expected_completion_date: '',
     priority: 'medium' as 'low' | 'medium' | 'high',
     category: '',
   });
@@ -71,13 +135,15 @@ const TodoApp = () => {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      setTodos(data.map(t => ({
+      const mappedTodos = data.map(t => ({
         ...t,
         priority: t.priority as 'low' | 'medium' | 'high',
         description: t.description || undefined,
         due_date: t.due_date || undefined,
+        expected_completion_date: t.expected_completion_date || undefined,
         category: t.category || undefined,
-      })));
+      }));
+      setTodos(mappedTodos);
     }
     setLoading(false);
   };
@@ -93,17 +159,19 @@ const TodoApp = () => {
           title: formData.title,
           description: formData.description || null,
           due_date: formData.due_date || null,
+          expected_completion_date: formData.expected_completion_date || null,
           priority: formData.priority,
           category: formData.category || null,
         })
         .eq('id', editingTodo.id);
 
       if (!error) {
-        setTodos(todos.map(t => 
+        const updatedTodos = todos.map(t => 
           t.id === editingTodo.id 
-            ? { ...t, ...formData, description: formData.description || undefined, due_date: formData.due_date || undefined, category: formData.category || undefined }
+            ? { ...t, ...formData, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, category: formData.category || undefined }
             : t
-        ));
+        );
+        setTodos(sortTodosByPriorityAndDate(updatedTodos));
         toast({ title: 'Task Updated' });
       }
     } else {
@@ -114,6 +182,7 @@ const TodoApp = () => {
           title: formData.title,
           description: formData.description || null,
           due_date: formData.due_date || null,
+          expected_completion_date: formData.expected_completion_date || null,
           priority: formData.priority,
           category: formData.category || null,
         })
@@ -121,13 +190,15 @@ const TodoApp = () => {
         .single();
 
       if (!error && data) {
-        setTodos([{
+        const newTodo = {
           ...data,
           priority: data.priority as 'low' | 'medium' | 'high',
           description: data.description || undefined,
           due_date: data.due_date || undefined,
+          expected_completion_date: data.expected_completion_date || undefined,
           category: data.category || undefined,
-        }, ...todos]);
+        };
+        setTodos(sortTodosByPriorityAndDate([newTodo, ...todos]));
         toast({ title: 'Task Added' });
       }
     }
@@ -142,9 +213,10 @@ const TodoApp = () => {
       .eq('id', todo.id);
 
     if (!error) {
-      setTodos(todos.map(t => 
+      const updatedTodos = todos.map(t => 
         t.id === todo.id ? { ...t, is_completed: !t.is_completed } : t
-      ));
+      );
+      setTodos(sortTodosByPriorityAndDate(updatedTodos));
     }
   };
 
@@ -166,6 +238,7 @@ const TodoApp = () => {
       title: todo.title,
       description: todo.description || '',
       due_date: todo.due_date || '',
+      expected_completion_date: todo.expected_completion_date || '',
       priority: todo.priority,
       category: todo.category || '',
     });
@@ -175,19 +248,26 @@ const TodoApp = () => {
   const closeDialog = () => {
     setDialogOpen(false);
     setEditingTodo(null);
-    setFormData({ title: '', description: '', due_date: '', priority: 'medium', category: '' });
+    setFormData({ title: '', description: '', due_date: '', expected_completion_date: '', priority: 'medium', category: '' });
   };
 
-  const filteredTodos = todos.filter(todo => {
-    if (!showCompleted && todo.is_completed) return false;
-    if (filterCategory !== 'all' && todo.category !== filterCategory) return false;
-    if (filterPriority !== 'all' && todo.priority !== filterPriority) return false;
-    if (searchQuery && !todo.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
+  const filteredTodos = sortTodosByPriorityAndDate(
+    todos.filter(todo => {
+      if (!showCompleted && todo.is_completed) return false;
+      if (filterCategory !== 'all' && todo.category !== filterCategory) return false;
+      if (filterPriority !== 'all' && todo.priority !== filterPriority) return false;
+      if (searchQuery && !todo.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    })
+  );
 
   const completedCount = todos.filter(t => t.is_completed).length;
   const pendingCount = todos.length - completedCount;
+
+  // Get top priority tasks for summary (max 3)
+  const topPriorityTasks = sortTodosByPriorityAndDate(
+    todos.filter(t => !t.is_completed)
+  ).slice(0, 3);
 
   return (
     <div className="min-h-screen bg-background">
@@ -240,6 +320,54 @@ const TodoApp = () => {
       </header>
 
       <main className="max-w-6xl mx-auto p-4 md:p-6 -mt-4 relative z-10">
+        {/* Task Summary */}
+        {!loading && topPriorityTasks.length > 0 && (
+          <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in bg-gradient-to-br from-primary/5 to-primary/2 border-primary/20">
+            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 text-primary">
+              <ListTodo className="w-4 h-4" />
+              Top Priority Tasks
+            </h3>
+            <div className="space-y-2">
+              {topPriorityTasks.map((task, idx) => {
+                const daysLeft = daysUntilDue(task.expected_completion_date || task.due_date);
+                const isOverdue = daysLeft !== null && daysLeft < 0;
+                const dueSoon = daysLeft !== null && daysLeft <= 3 && daysLeft >= 0;
+                
+                return (
+                  <div key={task.id} className="flex items-start gap-3 p-2 rounded-lg bg-white/50 dark:bg-slate-950/50 hover:bg-white/80 dark:hover:bg-slate-900/50 transition-colors">
+                    <span className="text-xs font-bold text-primary mt-1 min-w-fit">#{idx + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium line-clamp-1">{task.title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[task.priority]}`}>
+                          <Flag className="w-3 h-3 mr-1" />
+                          {task.priority}
+                        </Badge>
+                        {(task.expected_completion_date || task.due_date) && (
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${
+                              isOverdue ? 'bg-destructive/20 text-destructive border-destructive/30' :
+                              dueSoon ? 'bg-warning/20 text-warning border-warning/30' :
+                              'bg-success/20 text-success border-success/30'
+                            }`}
+                          >
+                            <Calendar className="w-3 h-3 mr-1" />
+                            {isToday(task.expected_completion_date || task.due_date) ? 'Today' :
+                             isOverdue ? `${Math.abs(daysLeft!)} days overdue` :
+                             daysLeft === 0 ? 'Due today' :
+                             `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+
         {/* Search & Filters */}
         <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -433,33 +561,42 @@ const TodoApp = () => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Due Date</Label>
-                <Input
-                  type="date"
-                  value={formData.due_date}
-                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  className="rounded-xl"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>Due Date</Label>
+              <Input
+                type="date"
+                value={formData.due_date}
+                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                className="rounded-xl"
+              />
+            </div>
 
-              <div className="space-y-2">
-                <Label>Priority</Label>
-                <Select 
-                  value={formData.priority} 
-                  onValueChange={(v) => setFormData({ ...formData, priority: v as 'low' | 'medium' | 'high' })}
-                >
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">🟢 Low</SelectItem>
-                    <SelectItem value="medium">🟡 Medium</SelectItem>
-                    <SelectItem value="high">🔴 High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label>Expected Completion Date</Label>
+              <Input
+                type="date"
+                value={formData.expected_completion_date}
+                onChange={(e) => setFormData({ ...formData, expected_completion_date: e.target.value })}
+                className="rounded-xl"
+              />
+              <p className="text-xs text-muted-foreground">If set, this date will be prioritized for task ordering</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Priority</Label>
+              <Select 
+                value={formData.priority} 
+                onValueChange={(v) => setFormData({ ...formData, priority: v as 'low' | 'medium' | 'high' })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">🟢 Low</SelectItem>
+                  <SelectItem value="medium">🟡 Medium</SelectItem>
+                  <SelectItem value="high">🔴 High</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
