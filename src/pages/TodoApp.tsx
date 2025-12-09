@@ -172,11 +172,13 @@ const TodoApp = () => {
     if (profileCache[userId]) return profileCache[userId];
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url, email')
+      .select('id, email')
       .eq('id', userId)
       .maybeSingle();
     if (!error && data) {
-      setProfileCache(prev => ({ ...prev, [userId]: data }));
+      // normalize to expected shape (may not have full_name/avatar_url yet)
+      const normalized = { full_name: (data as any).full_name, avatar_url: (data as any).avatar_url, email: (data as any).email };
+      setProfileCache(prev => ({ ...prev, [userId]: normalized }));
       return data;
     }
     return null;
@@ -247,19 +249,32 @@ const TodoApp = () => {
       setAssigneeProfile(null);
       return null;
     }
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url, email')
-      .ilike('email', email)
-      .limit(1)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .ilike('email', email)
+        .limit(1)
+        .maybeSingle();
 
-    if (!error && data) {
-      setAssigneeProfile(data as any);
-      return data as any;
+      console.debug('lookupProfileByEmail result:', { email, data, error });
+      if (error) {
+        toast({ title: 'Profile lookup error', description: error.message, variant: 'destructive' });
+        setAssigneeProfile(null);
+        return null;
+      }
+      if (data) {
+        setAssigneeProfile({ id: (data as any).id, email: (data as any).email } as any);
+        return data as any;
+      }
+      setAssigneeProfile(null);
+      return null;
+    } catch (err: any) {
+      console.error('lookupProfileByEmail exception', err);
+      toast({ title: 'Profile lookup failed', description: err.message || String(err), variant: 'destructive' });
+      setAssigneeProfile(null);
+      return null;
     }
-    setAssigneeProfile(null);
-    return null;
   };
 
   // Profile search/autocomplete (returns up to 5 matches)
@@ -273,15 +288,24 @@ const TodoApp = () => {
       return;
     }
     setProfileSearchLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, avatar_url')
-      .ilike('email', `%${q}%`)
-      .limit(5);
-    setProfileSearchLoading(false);
-    if (!error && data) {
-      setProfileSuggestions(data as any);
-    } else {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .ilike('email', `%${q}%`)
+        .limit(5);
+      setProfileSearchLoading(false);
+      console.debug('searchProfiles', { q, data, error });
+      if (error) {
+        toast({ title: 'Profile search error', description: error.message, variant: 'destructive' });
+        setProfileSuggestions([]);
+        return;
+      }
+      setProfileSuggestions((data as any || []).map((d: any) => ({ id: d.id, email: d.email })));
+    } catch (err: any) {
+      setProfileSearchLoading(false);
+      console.error('searchProfiles exception', err);
+      toast({ title: 'Profile search failed', description: err.message || String(err), variant: 'destructive' });
       setProfileSuggestions([]);
     }
   };
@@ -1227,6 +1251,21 @@ const TodoApp = () => {
                       const email = e.target.value;
                       setFormData({ ...formData, assignee_email: email, assigned_to: '' });
                       setProfileSearchQuery(email);
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const email = (formData as any).assignee_email;
+                        if (email) {
+                          const profile = await lookupProfileByEmail(email);
+                          if (profile) {
+                            setFormData({ ...formData, assigned_to: profile.id, assignee_email: profile.email, assignTo: true });
+                            setProfileSuggestions([]);
+                          } else {
+                            toast({ title: 'No matching user found', description: 'Please select from suggestions or check the email', variant: 'warning' });
+                          }
+                        }
+                      }
                     }}
                     placeholder="Start typing email to search users..."
                     className="rounded-xl"
