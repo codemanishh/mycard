@@ -669,26 +669,26 @@ const TodoApp = () => {
       {/* Header */}
       <header className="gradient-hero text-white relative overflow-hidden backdrop-blur-md bg-gradient-to-br from-primary/90 to-primary/70 dark:from-slate-900/95 dark:to-slate-800/80">
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute -top-24 -right-24 w-64 sm:w-96 h-64 sm:h-96 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute -bottom-32 -left-32 w-56 sm:w-80 h-56 sm:h-80 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
         </div>
         
-        <div className="relative max-w-6xl mx-auto p-6">
-          <div className="flex items-center gap-4 mb-6">
+        <div className="relative max-w-6xl mx-auto p-4 sm:p-6">
+          <div className="flex items-center gap-2 sm:gap-4 mb-4 sm:mb-6">
             <Button 
               onClick={() => navigate('/')}
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20 rounded-xl"
+              className="text-white hover:bg-white/20 rounded-xl h-10 w-10"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
-                <ListTodo className="w-6 h-6" />
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+              <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm flex-shrink-0">
+                <ListTodo className="w-5 sm:w-6 h-5 sm:h-6" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight">Todo App</h1>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-bold tracking-tight line-clamp-1">Todo App</h1>
                 <p className="text-xs text-white/70">Stay organized</p>
                 {!isOnline && <p className="text-xs text-warning mt-1">📡 Offline Mode</p>}
               </div>
@@ -696,26 +696,26 @@ const TodoApp = () => {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/15 backdrop-blur-md rounded-2xl p-4 border border-white/20">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            <div className="bg-white/15 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-white/20">
               <div className="flex items-center gap-2 mb-1">
                 <Circle className="w-4 h-4" />
                 <span className="text-xs text-white/80">Pending</span>
               </div>
-              <p className="text-2xl font-bold">{pendingCount}</p>
+              <p className="text-2xl sm:text-3xl font-bold">{pendingCount}</p>
             </div>
-            <div className="bg-white/15 backdrop-blur-md rounded-2xl p-4 border border-white/20">
+            <div className="bg-white/15 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-white/20">
               <div className="flex items-center gap-2 mb-1">
                 <CheckCircle2 className="w-4 h-4" />
                 <span className="text-xs text-white/80">Completed</span>
               </div>
-              <p className="text-2xl font-bold">{completedCount}</p>
+              <p className="text-2xl sm:text-3xl font-bold">{completedCount}</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-4 md:p-6 -mt-4 relative z-10">
+      <main className="max-w-6xl mx-auto p-3 sm:p-4 md:p-6 -mt-4 relative z-10">
         {/* Reminders Notifications */}
         {upcomingReminders.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -737,13 +737,13 @@ const TodoApp = () => {
         )}
 
         {/* Tabs */}
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4 overflow-x-auto">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-            <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="assigned_to_me">Assigned to me <span className="ml-2 text-xs text-muted-foreground">{user ? todos.filter(t => t.assigned_to === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
-              <TabsTrigger value="assigned_by_me">Assigned by me <span className="ml-2 text-xs text-muted-foreground">{user ? todos.filter(t => t.assigned_by === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
-              <TabsTrigger value="deleted">Deleted <span className="ml-2 text-xs text-muted-foreground">{todos.filter(t => t.is_deleted).length}</span></TabsTrigger>
+            <TabsList className="grid grid-cols-4 w-full">
+              <TabsTrigger value="all" className="text-xs sm:text-sm">All</TabsTrigger>
+              <TabsTrigger value="assigned_to_me" className="text-xs sm:text-sm truncate">For me <span className="hidden sm:inline ml-1 text-muted-foreground">{user ? todos.filter(t => t.assigned_to === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
+              <TabsTrigger value="assigned_by_me" className="text-xs sm:text-sm truncate">By me <span className="hidden sm:inline ml-1 text-muted-foreground">{user ? todos.filter(t => t.assigned_by === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
+              <TabsTrigger value="deleted" className="text-xs sm:text-sm">Del</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -817,21 +817,22 @@ const TodoApp = () => {
         )}
 
         {/* Search & Filters */}
-        <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 hover:shadow-elevated transition-all duration-300">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
+        <Card className="p-3 sm:p-4 mb-3 sm:mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 hover:shadow-elevated transition-all duration-300">
+          <div className="flex flex-col gap-2 sm:gap-3">
+            <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search tasks..."
-                className="pl-10 rounded-xl"
+                className="pl-10 rounded-xl h-10 text-sm"
               />
             </div>
+            <div className="flex gap-2 w-full">
             <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="w-full sm:w-[140px] rounded-xl">
+              <SelectTrigger className="flex-1 rounded-xl h-10 text-sm">
                 <Tag className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Category" />
+                <SelectValue placeholder="Cat" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
@@ -841,9 +842,9 @@ const TodoApp = () => {
               </SelectContent>
             </Select>
             <Select value={filterPriority} onValueChange={setFilterPriority}>
-              <SelectTrigger className="w-full sm:w-[140px] rounded-xl">
+              <SelectTrigger className="flex-1 rounded-xl h-10 text-sm">
                 <Flag className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Priority" />
+                <SelectValue placeholder="Pri" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Priorities</SelectItem>
@@ -852,15 +853,16 @@ const TodoApp = () => {
                 <SelectItem value="low">Low</SelectItem>
               </SelectContent>
             </Select>
+            </div>
           </div>
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex items-center gap-2 mt-2 sm:mt-3">
             <Checkbox 
               id="show-completed"
               checked={showCompleted}
               onCheckedChange={(c) => setShowCompleted(c as boolean)}
             />
-            <label htmlFor="show-completed" className="text-sm text-muted-foreground cursor-pointer">
-              Show completed tasks
+            <label htmlFor="show-completed" className="text-xs sm:text-sm text-muted-foreground cursor-pointer">
+              Completed
             </label>
           </div>
         </Card>
@@ -887,16 +889,16 @@ const TodoApp = () => {
             </Button>
           </Card>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {filteredTodos.map((todo, index) => (
               <Card 
                 key={todo.id}
-                className={`p-4 shadow-card border-border/50 rounded-2xl transition-all duration-300 hover:shadow-elevated hover:scale-[1.01] hover:border-primary/30 animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 ${
+                className={`p-3 sm:p-4 shadow-card border-border/50 rounded-2xl transition-all duration-300 hover:shadow-elevated hover:scale-[1.01] hover:border-primary/30 animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 ${
                   todo.is_completed ? 'opacity-60' : ''
                 }`}
                 style={{ animationDelay: `${index * 50}ms` }}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-2 sm:gap-3">
                   <button
                     onClick={() => toggleComplete(todo)}
                     className="mt-1 transition-transform hover:scale-110"
@@ -919,7 +921,7 @@ const TodoApp = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary"
+                              className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary flex-shrink-0"
                               onClick={() => openEditDialog(todo)}
                             >
                               <Edit2 className="w-4 h-4" />
@@ -927,7 +929,7 @@ const TodoApp = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                              className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
                               onClick={() => deleteTodo(todo.id)}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -938,7 +940,7 @@ const TodoApp = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 rounded-lg hover:bg-success/10 hover:text-success"
+                            className="h-8 px-2 text-xs rounded-lg hover:bg-success/10 hover:text-success flex-shrink-0"
                             onClick={() => restoreTodo(todo.id)}
                           >
                             Restore
@@ -958,7 +960,7 @@ const TodoApp = () => {
                       {generateTaskSummary(todo)}
                     </p>
                     
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-2">
                       <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[todo.priority]}`}>
                         <Flag className="w-3 h-3 mr-1" />
                         {todo.priority}
@@ -998,38 +1000,38 @@ const TodoApp = () => {
                     )}
 
                     {todo.assigned_to && (
-                      <div className="mt-2 flex flex-col gap-2">
+                      <div className="mt-2 space-y-2">
                         <div className="flex items-center gap-2">
                           {profileCache[todo.assigned_to] ? (
                             <>
-                              <div className="w-6 h-6 rounded-full bg-muted-foreground/20 flex items-center justify-center text-xs font-medium overflow-hidden">
+                              <div className="w-6 h-6 rounded-full bg-muted-foreground/20 flex items-center justify-center text-xs font-medium overflow-hidden flex-shrink-0">
                                 {profileCache[todo.assigned_to].avatar_url ? (
                                   <img src={profileCache[todo.assigned_to].avatar_url} alt="avatar" className="w-full h-full object-cover" />
                                 ) : (
                                   <span>{profileCache[todo.assigned_to].full_name ? profileCache[todo.assigned_to].full_name.charAt(0) : '?'}</span>
                                 )}
                               </div>
-                              <p className="text-xs text-muted-foreground">Assigned to: <span className="font-medium">{profileCache[todo.assigned_to].full_name || profileCache[todo.assigned_to].email}</span></p>
+                              <p className="text-xs text-muted-foreground line-clamp-1">Assigned to: <span className="font-medium">{profileCache[todo.assigned_to].full_name || profileCache[todo.assigned_to].email}</span></p>
                             </>
                           ) : (
                             <p className="text-xs text-muted-foreground">Assigned to: <span className="font-medium">{todo.assigned_to.slice(0, 8)}</span></p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                           {user && user.id === todo.assigned_to && todo.assignment_status === 'pending' && (
                             <>
-                              <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'accept')}>Accept</Button>
-                              <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'reject')}>Reject</Button>
+                              <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'accept')} className="h-8 px-2 text-xs">Accept</Button>
+                              <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'reject')} className="h-8 px-2 text-xs">Reject</Button>
                             </>
                           )}
                           {user && user.id === todo.assigned_to && todo.assignment_status === 'accepted' && (
-                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'wip')}>Start Work</Button>
+                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'wip')} className="h-8 px-2 text-xs">Start</Button>
                           )}
                           {user && user.id === todo.assigned_to && todo.assignment_status === 'wip' && (
-                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'closed')}>Mark Done</Button>
+                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'closed')} className="h-8 px-2 text-xs">Done</Button>
                           )}
                           {(user?.id === todo.assigned_to || user?.id === todo.assigned_by) && ['pending', 'accepted', 'wip'].includes(todo.assignment_status || '') && (
-                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'closed')}>Close</Button>
+                            <Button size="sm" variant="ghost" onClick={() => respondToAssignment(todo, 'closed')} className="h-8 px-2 text-xs">Close</Button>
                           )}
                         </div>
                       </div>
@@ -1098,7 +1100,7 @@ const TodoApp = () => {
         {/* FAB */}
         <Button
           onClick={() => setDialogOpen(true)}
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-elevated hover:scale-110 transition-transform"
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-elevated hover:scale-110 transition-transform"
           size="icon"
         >
           <Plus className="w-6 h-6" />
@@ -1107,7 +1109,7 @@ const TodoApp = () => {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="max-w-md rounded-3xl border-border/50 shadow-elevated">
+        <DialogContent className="max-w-md w-[calc(100vw-2rem)] rounded-3xl border-border/50 shadow-elevated max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               {editingTodo ? <Edit2 className="w-5 h-5 text-primary" /> : <Plus className="w-5 h-5 text-primary" />}
@@ -1115,16 +1117,16 @@ const TodoApp = () => {
             </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>Title *</Label>
+                <Label className="text-sm">Title *</Label>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   onClick={() => isListening ? stopListening() : startListening()}
-                  className="text-xs"
+                  className="text-xs h-8 px-2"
                 >
                   {isListening ? (
                     <>
@@ -1143,7 +1145,7 @@ const TodoApp = () => {
                 value={formData.title || transcript}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="What needs to be done?"
-                className="rounded-xl"
+                className="rounded-xl h-10 text-sm"
                 autoFocus
               />
               {transcript && (
@@ -1158,7 +1160,7 @@ const TodoApp = () => {
                       clearTranscript();
                       stopListening();
                     }}
-                    className="text-xs"
+                    className="text-xs h-8 px-2"
                   >
                     Use
                   </Button>
@@ -1172,7 +1174,7 @@ const TodoApp = () => {
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Add more details..."
-                className="rounded-xl resize-none"
+                className="rounded-xl resize-none text-sm"
                 rows={3}
               />
             </div>
@@ -1183,7 +1185,7 @@ const TodoApp = () => {
                 type="date"
                 value={formData.due_date}
                 onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                className="rounded-xl"
+                className="rounded-xl h-10 text-sm"
               />
             </div>
 
@@ -1193,7 +1195,7 @@ const TodoApp = () => {
                 type="date"
                 value={formData.expected_completion_date}
                 onChange={(e) => setFormData({ ...formData, expected_completion_date: e.target.value })}
-                className="rounded-xl"
+                className="rounded-xl h-10 text-sm"
               />
               <p className="text-xs text-muted-foreground">If set, this date will be prioritized for task ordering</p>
             </div>
@@ -1204,7 +1206,7 @@ const TodoApp = () => {
                 value={formData.priority} 
                 onValueChange={(v) => setFormData({ ...formData, priority: v as 'low' | 'medium' | 'high' })}
               >
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-xl h-10 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1221,7 +1223,7 @@ const TodoApp = () => {
                 value={formData.category} 
                 onValueChange={(v) => setFormData({ ...formData, category: v })}
               >
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-xl h-10 text-sm">
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1264,7 +1266,7 @@ const TodoApp = () => {
                             setFormData({ ...formData, assigned_to: profile.id, assignee_email: profile.email, assignTo: true });
                             setProfileSuggestions([]);
                           } else {
-                            toast({ title: 'No matching user found', description: 'Please select from suggestions or check the email', variant: 'warning' });
+                            toast({ title: 'No matching user found', description: 'Please select from suggestions or check the email' });
                           }
                         }
                       }
@@ -1282,10 +1284,10 @@ const TodoApp = () => {
                           type="button"
                           className="w-full text-left px-3 py-2 hover:bg-muted-foreground/5"
                             onClick={() => {
-                            // use auth user id (user_id) for assigned_to so filtering matches auth.id
-                            setFormData({ ...formData, assigned_to: p.user_id || p.id, assignee_email: p.email, assignTo: true });
-                            // cache profile under user_id
-                            setAssigneeProfile({ id: p.id, user_id: p.user_id, email: p.email, full_name: p.full_name, avatar_url: p.avatar_url } as any);
+                            // use profile.id for assigned_to so filtering matches auth.id
+                            setFormData({ ...formData, assigned_to: p.id, assignee_email: p.email, assignTo: true });
+                            // cache profile under id
+                            setAssigneeProfile({ id: p.id, email: p.email, full_name: p.full_name, avatar_url: p.avatar_url });
                             setProfileSuggestions([]);
                           }}
                         >
@@ -1324,7 +1326,7 @@ const TodoApp = () => {
                 value={(formData as any).recurrence_pattern} 
                 onValueChange={(v) => setFormData({ ...formData, recurrence_pattern: v as any })}
               >
-                <SelectTrigger className="rounded-xl">
+                <SelectTrigger className="rounded-xl h-10 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
