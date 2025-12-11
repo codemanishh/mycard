@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { useOffline } from '@/contexts/OfflineContext';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -34,6 +35,7 @@ import { supabase } from '@/integrations/supabase/client';
 const Index = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { queueMutation } = useOffline();
   const [cards, setCards] = useState<CreditCardType[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -314,109 +316,119 @@ const Index = () => {
 
   const handleAddBank = async (bankData: Omit<BankAccount, 'id'>) => {
     if (!user) return;
+    if (navigator.onLine) {
+      const { data, error } = await supabase
+        .from('bank_accounts')
+        .insert({
+          user_id: user.id,
+          bank_name: bankData.bankName,
+          balance: bankData.balance,
+          type: bankData.type,
+        })
+        .select()
+        .single();
 
-    const { data, error } = await supabase
-      .from('bank_accounts')
-      .insert({
-        user_id: user.id,
-        bank_name: bankData.bankName,
-        balance: bankData.balance,
-        type: bankData.type,
-      })
-      .select()
-      .single();
-
-    if (data && !error) {
-      setBankAccounts([{
-        id: data.id,
-        bankName: data.bank_name,
-        balance: Number(data.balance) || 0,
-        type: data.type as BankAccount['type'],
-      }, ...bankAccounts]);
-      toast({
-        title: 'Bank Added',
-        description: `${bankData.bankName} has been added.`,
-      });
+      if (data && !error) {
+        setBankAccounts([{
+          id: data.id,
+          bankName: data.bank_name,
+          balance: Number(data.balance) || 0,
+          type: data.type as BankAccount['type'],
+        }, ...bankAccounts]);
+        toast({
+          title: 'Bank Added',
+          description: `${bankData.bankName} has been added.`,
+        });
+      }
+    } else {
+      // queue for later and optimistically update UI
+      const tempId = `offline-${Date.now()}`;
+      await queueMutation('supabase', { op: 'insert', table: 'bank_accounts', data: { user_id: user.id, bank_name: bankData.bankName, balance: bankData.balance, type: bankData.type } });
+      setBankAccounts([{ id: tempId, bankName: bankData.bankName, balance: bankData.balance, type: bankData.type }, ...bankAccounts]);
+      toast({ title: 'Bank Added (offline)', description: `${bankData.bankName} will be saved when online.` });
     }
   };
 
   const handleDeleteBank = async (id: string) => {
     const bankToDelete = bankAccounts.find(b => b.id === id);
-    
-    const { error } = await supabase
-      .from('bank_accounts')
-      .delete()
-      .eq('id', id);
+    if (navigator.onLine) {
+      const { error } = await supabase
+        .from('bank_accounts')
+        .delete()
+        .eq('id', id);
 
-    if (!error) {
+      if (!error) {
+        setBankAccounts(bankAccounts.filter(b => b.id !== id));
+        toast({ title: 'Bank Deleted', description: `${bankToDelete?.bankName} has been removed.` });
+      }
+    } else {
+      // queue deletion and optimistically remove
+      await queueMutation('supabase', { op: 'delete', table: 'bank_accounts', match: { id } });
       setBankAccounts(bankAccounts.filter(b => b.id !== id));
-      toast({
-        title: 'Bank Deleted',
-        description: `${bankToDelete?.bankName} has been removed.`,
-      });
+      toast({ title: 'Bank Deleted (offline)', description: `${bankToDelete?.bankName} will be removed when online.` });
     }
   };
 
   const handleAddExpense = async (expenseData: Omit<Expense, 'id' | 'createdAt'>) => {
     if (!user) return;
+    if (navigator.onLine) {
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert({
+          user_id: user.id,
+          amount: expenseData.amount,
+          date: expenseData.date,
+          category: expenseData.category,
+          store_name: expenseData.storeName,
+          payment_method: expenseData.paymentMethod,
+          payment_source_id: expenseData.paymentSourceId,
+          payment_source_name: expenseData.paymentSourceName,
+          note: expenseData.note,
+        })
+        .select()
+        .single();
 
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert({
-        user_id: user.id,
-        amount: expenseData.amount,
-        date: expenseData.date,
-        category: expenseData.category,
-        store_name: expenseData.storeName,
-        payment_method: expenseData.paymentMethod,
-        payment_source_id: expenseData.paymentSourceId,
-        payment_source_name: expenseData.paymentSourceName,
-        note: expenseData.note,
-      })
-      .select()
-      .single();
+      if (data && !error) {
+        const newExpense: Expense = { ...expenseData, id: data.id, createdAt: data.created_at };
+        setExpenses([newExpense, ...expenses]);
 
-    if (data && !error) {
-      const newExpense: Expense = {
-        ...expenseData,
-        id: data.id,
-        createdAt: data.created_at,
-      };
+        if (expenseData.paymentMethod === 'bank') {
+          const updatedBalance = bankAccounts.find(acc => acc.id === expenseData.paymentSourceId)!.balance - expenseData.amount;
+          await supabase.from('bank_accounts').update({ balance: updatedBalance }).eq('id', expenseData.paymentSourceId);
+          setBankAccounts(bankAccounts.map(acc => acc.id === expenseData.paymentSourceId ? { ...acc, balance: updatedBalance } : acc));
+        } else {
+          const card = cards.find(c => c.id === expenseData.paymentSourceId);
+          if (card) {
+            const updatedBill = card.currentBill + expenseData.amount;
+            await supabase.from('credit_cards').update({ current_bill: updatedBill }).eq('id', expenseData.paymentSourceId);
+            setCards(cards.map(c => c.id === expenseData.paymentSourceId ? { ...c, currentBill: updatedBill } : c));
+          }
+        }
+
+        toast({ title: 'Expense Added', description: `₹${expenseData.amount.toLocaleString('en-IN')} from ${expenseData.paymentSourceName}` });
+      }
+    } else {
+      // Offline: queue expense insert and any dependent updates, then optimistic UI update
+      const tempId = `offline-expense-${Date.now()}`;
+      await queueMutation('supabase', { op: 'insert', table: 'expenses', data: { user_id: user.id, amount: expenseData.amount, date: expenseData.date, category: expenseData.category, store_name: expenseData.storeName, payment_method: expenseData.paymentMethod, payment_source_id: expenseData.paymentSourceId, payment_source_name: expenseData.paymentSourceName, note: expenseData.note } });
+
+      const newExpense: Expense = { ...expenseData, id: tempId, createdAt: new Date().toISOString() };
       setExpenses([newExpense, ...expenses]);
 
       if (expenseData.paymentMethod === 'bank') {
         const updatedBalance = bankAccounts.find(acc => acc.id === expenseData.paymentSourceId)!.balance - expenseData.amount;
-        await supabase
-          .from('bank_accounts')
-          .update({ balance: updatedBalance })
-          .eq('id', expenseData.paymentSourceId);
-        
-        setBankAccounts(bankAccounts.map(acc => 
-          acc.id === expenseData.paymentSourceId 
-            ? { ...acc, balance: updatedBalance }
-            : acc
-        ));
+        await queueMutation('supabase', { op: 'update', table: 'bank_accounts', data: { balance: updatedBalance }, match: { id: expenseData.paymentSourceId } });
+        setBankAccounts(bankAccounts.map(acc => acc.id === expenseData.paymentSourceId ? { ...acc, balance: updatedBalance } : acc));
       } else {
         const card = cards.find(c => c.id === expenseData.paymentSourceId);
         if (card) {
           const updatedBill = card.currentBill + expenseData.amount;
-          await supabase
-            .from('credit_cards')
-            .update({ current_bill: updatedBill })
-            .eq('id', expenseData.paymentSourceId);
-          
-          setCards(cards.map(c => 
-            c.id === expenseData.paymentSourceId 
-              ? { ...c, currentBill: updatedBill }
-              : c
-          ));
+          await queueMutation('supabase', { op: 'update', table: 'credit_cards', data: { current_bill: updatedBill }, match: { id: expenseData.paymentSourceId } });
+          setCards(cards.map(c => c.id === expenseData.paymentSourceId ? { ...c, currentBill: updatedBill } : c));
         }
       }
 
-      toast({
-        title: 'Expense Added',
-        description: `₹${expenseData.amount.toLocaleString('en-IN')} from ${expenseData.paymentSourceName}`,
-      });
+      toast({ title: 'Expense Added (offline)', description: `₹${expenseData.amount.toLocaleString('en-IN')} will be synced when online.` });
     }
   };
 

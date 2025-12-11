@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useOffline } from '@/contexts/OfflineContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -160,6 +161,8 @@ const TodoApp = () => {
     recurrence_pattern: 'none' as 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly',
     is_template: false,
   });
+
+  const { queueMutation } = useOffline();
 
   const [assigneeProfile, setAssigneeProfile] = useState<{ id: string; full_name?: string; avatar_url?: string; email?: string } | null>(null);
   const [profileCache, setProfileCache] = useState<Record<string, { full_name?: string; avatar_url?: string; email?: string }>>({});
@@ -330,71 +333,88 @@ const TodoApp = () => {
     }
 
     if (editingTodo) {
-      const { error } = await supabase
-        .from('todos')
-        .update({
-          title: formData.title,
-          description: formData.description || null,
-          due_date: formData.due_date || null,
-          expected_completion_date: formData.expected_completion_date || null,
-          assigned_to: formData.assigned_to || null,
-          assigned_by: formData.assigned_to ? user.id : null,
-          assignment_status: formData.assigned_to ? 'pending' : 'open',
-          assigned_at: formData.assigned_to ? new Date().toISOString() : null,
-          priority: formData.priority,
-          category: formData.category || null,
-          recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
-          is_template: (formData as any).is_template,
-        })
-        .eq('id', editingTodo.id);
+      if (navigator.onLine) {
+        const { error } = await supabase
+          .from('todos')
+          .update({
+            title: formData.title,
+            description: formData.description || null,
+            due_date: formData.due_date || null,
+            expected_completion_date: formData.expected_completion_date || null,
+            assigned_to: formData.assigned_to || null,
+            assigned_by: formData.assigned_to ? user.id : null,
+            assignment_status: formData.assigned_to ? 'pending' : 'open',
+            assigned_at: formData.assigned_to ? new Date().toISOString() : null,
+            priority: formData.priority,
+            category: formData.category || null,
+            recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
+            is_template: (formData as any).is_template,
+          })
+          .eq('id', editingTodo.id);
 
-      if (!error) {
-        const updatedTodos = todos.map(t => 
-          t.id === editingTodo.id 
-            ? { ...t, ...formData, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, category: formData.category || undefined }
-            : t
-        );
+        if (!error) {
+          const updatedTodos = todos.map(t => 
+            t.id === editingTodo.id 
+              ? { ...t, ...formData, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, category: formData.category || undefined }
+              : t
+          );
+          setTodos(sortTodosByPriorityAndDate(updatedTodos));
+          toast({ title: 'Task Updated' });
+        }
+      } else {
+        // offline: queue update and optimistically update
+        await queueMutation('supabase', { op: 'update', table: 'todos', data: { title: formData.title, description: formData.description || null, due_date: formData.due_date || null, expected_completion_date: formData.expected_completion_date || null, assigned_to: formData.assigned_to || null, assigned_by: formData.assigned_to ? user.id : null, assignment_status: formData.assigned_to ? 'pending' : 'open', assigned_at: formData.assigned_to ? new Date().toISOString() : null, priority: formData.priority, category: formData.category || null, recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern, is_template: (formData as any).is_template }, match: { id: editingTodo.id } });
+        const updatedTodos = todos.map(t => t.id === editingTodo.id ? { ...t, ...formData } : t);
         setTodos(sortTodosByPriorityAndDate(updatedTodos));
-        toast({ title: 'Task Updated' });
+        toast({ title: 'Task Updated (offline)' });
       }
     } else {
-      const { data, error } = await supabase
-        .from('todos')
-        .insert({
-          user_id: user.id,
-          title: formData.title,
-          description: formData.description || null,
-          due_date: formData.due_date || null,
-          expected_completion_date: formData.expected_completion_date || null,
-          priority: formData.priority,
-          category: formData.category || null,
-          recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
-          is_template: (formData as any).is_template,
-          // Assignment fields: include when assigning at creation
-          assigned_to: (formData as any).assigned_to || null,
-          assigned_by: (formData as any).assigned_to ? user.id : null,
-          assignment_status: (formData as any).assigned_to ? 'pending' : 'open',
-          assigned_at: (formData as any).assigned_to ? new Date().toISOString() : null,
-        })
-        .select()
-        .single();
+      if (navigator.onLine) {
+        const { data, error } = await supabase
+          .from('todos')
+          .insert({
+            user_id: user.id,
+            title: formData.title,
+            description: formData.description || null,
+            due_date: formData.due_date || null,
+            expected_completion_date: formData.expected_completion_date || null,
+            priority: formData.priority,
+            category: formData.category || null,
+            recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
+            is_template: (formData as any).is_template,
+            // Assignment fields: include when assigning at creation
+            assigned_to: (formData as any).assigned_to || null,
+            assigned_by: (formData as any).assigned_to ? user.id : null,
+            assignment_status: (formData as any).assigned_to ? 'pending' : 'open',
+            assigned_at: (formData as any).assigned_to ? new Date().toISOString() : null,
+          })
+          .select()
+          .single();
 
-      if (!error && data) {
-        const newTodo = {
-          ...data,
-          priority: data.priority as 'low' | 'medium' | 'high',
-          description: data.description || undefined,
-          due_date: data.due_date || undefined,
-          expected_completion_date: data.expected_completion_date || undefined,
-          assigned_to: data.assigned_to || undefined,
-          assigned_by: data.assigned_by || undefined,
-          assignment_status: data.assignment_status || undefined,
-          assigned_at: data.assigned_at || undefined,
-          accepted_at: data.accepted_at || undefined,
-          category: data.category || undefined,
-        };
+        if (!error && data) {
+          const newTodo = {
+            ...data,
+            priority: data.priority as 'low' | 'medium' | 'high',
+            description: data.description || undefined,
+            due_date: data.due_date || undefined,
+            expected_completion_date: data.expected_completion_date || undefined,
+            assigned_to: data.assigned_to || undefined,
+            assigned_by: data.assigned_by || undefined,
+            assignment_status: data.assignment_status || undefined,
+            assigned_at: data.assigned_at || undefined,
+            accepted_at: data.accepted_at || undefined,
+            category: data.category || undefined,
+          };
+          setTodos(sortTodosByPriorityAndDate([newTodo, ...todos]));
+          toast({ title: 'Task Added' });
+        }
+      } else {
+        // offline: queue insert and optimistic UI
+        const tempId = `offline-todo-${Date.now()}`;
+        await queueMutation('supabase', { op: 'insert', table: 'todos', data: { user_id: user.id, title: formData.title, description: formData.description || null, due_date: formData.due_date || null, expected_completion_date: formData.expected_completion_date || null, priority: formData.priority, category: formData.category || null, recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern, is_template: (formData as any).is_template, assigned_to: (formData as any).assigned_to || null, assigned_by: (formData as any).assigned_to ? user.id : null, assignment_status: (formData as any).assigned_to ? 'pending' : 'open', assigned_at: (formData as any).assigned_to ? new Date().toISOString() : null } });
+        const newTodo = { id: tempId, title: formData.title, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, priority: formData.priority, category: formData.category || undefined, is_deleted: false, is_completed: false, created_at: new Date().toISOString(), subtasks: [] } as any;
         setTodos(sortTodosByPriorityAndDate([newTodo, ...todos]));
-        toast({ title: 'Task Added' });
+        toast({ title: 'Task Added (offline)' });
       }
     }
 
@@ -417,168 +437,147 @@ const TodoApp = () => {
     const updates: any = { assignment_status: status };
     if (action === 'accept') updates.accepted_at = new Date().toISOString();
 
-    const { error } = await supabase
-      .from('todos')
-      .update(updates)
-      .eq('id', todo.id);
-
-    if (!error) {
+    if (navigator.onLine) {
+      const { error } = await supabase.from('todos').update(updates).eq('id', todo.id);
+      if (!error) {
+        const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, assignment_status: status } : t);
+        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        toast({ title: `Assignment ${status}` });
+      }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'todos', data: updates, match: { id: todo.id } });
       const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, assignment_status: status } : t);
       setTodos(sortTodosByPriorityAndDate(updatedTodos));
-      toast({ title: `Assignment ${status}` });
+      toast({ title: `Assignment ${status} (offline)` });
     }
   };
 
   const toggleComplete = async (todo: Todo) => {
-    const { error } = await supabase
-      .from('todos')
-      .update({ is_completed: !todo.is_completed })
-      .eq('id', todo.id);
-
-    if (!error) {
-      const updatedTodos = todos.map(t => 
-        t.id === todo.id ? { ...t, is_completed: !t.is_completed } : t
-      );
+    if (navigator.onLine) {
+      const { error } = await supabase.from('todos').update({ is_completed: !todo.is_completed }).eq('id', todo.id);
+      if (!error) {
+        const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, is_completed: !t.is_completed } : t);
+        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+      }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'todos', data: { is_completed: !todo.is_completed }, match: { id: todo.id } });
+      const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, is_completed: !t.is_completed } : t);
       setTodos(sortTodosByPriorityAndDate(updatedTodos));
     }
   };
 
   const deleteTodo = async (id: string) => {
     if (!user) return;
-    const { error } = await supabase
-      .from('todos')
-      .update({
-        is_deleted: true,
-        deleted_by: user.id,
-        deleted_at: new Date().toISOString(),
-      })
-      .eq('id', id);
-
-    if (!error) {
-      const updatedTodos = todos.map(t => 
-        t.id === id 
-          ? { ...t, is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() }
-          : t
-      );
+    if (navigator.onLine) {
+      const { error } = await supabase.from('todos').update({ is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() }).eq('id', id);
+      if (!error) {
+        const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() } : t);
+        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        toast({ title: 'Task Deleted' });
+      }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'todos', data: { is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() }, match: { id } });
+      const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() } : t);
       setTodos(sortTodosByPriorityAndDate(updatedTodos));
-      toast({ title: 'Task Deleted' });
+      toast({ title: 'Task Deleted (offline)' });
     }
   };
 
   const restoreTodo = async (id: string) => {
-    const { error } = await supabase
-      .from('todos')
-      .update({
-        is_deleted: false,
-        deleted_by: null,
-        deleted_at: null,
-      })
-      .eq('id', id);
-
-    if (!error) {
-      const updatedTodos = todos.map(t => 
-        t.id === id 
-          ? { ...t, is_deleted: false, deleted_by: undefined, deleted_at: undefined }
-          : t
-      );
+    if (navigator.onLine) {
+      const { error } = await supabase.from('todos').update({ is_deleted: false, deleted_by: null, deleted_at: null }).eq('id', id);
+      if (!error) {
+        const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: false, deleted_by: undefined, deleted_at: undefined } : t);
+        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        toast({ title: 'Task Restored' });
+      }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'todos', data: { is_deleted: false, deleted_by: null, deleted_at: null }, match: { id } });
+      const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: false, deleted_by: undefined, deleted_at: undefined } : t);
       setTodos(sortTodosByPriorityAndDate(updatedTodos));
-      toast({ title: 'Task Restored' });
+      toast({ title: 'Task Restored (offline)' });
     }
   };
 
   const addSubtask = async (todoId: string, title: string) => {
     if (!title.trim()) return;
-    const { data, error } = await supabase
-      .from('subtasks')
-      .insert({
-        todo_id: todoId,
-        title: title.trim(),
-        is_completed: false,
-        order_index: (todos.find(t => t.id === todoId)?.subtasks?.length || 0),
-      })
-      .select()
-      .single();
-
-    if (!error && data) {
-      const updatedTodos = todos.map(t => 
-        t.id === todoId 
-          ? { ...t, subtasks: [...(t.subtasks || []), data] }
-          : t
-      );
+    if (navigator.onLine) {
+      const { data, error } = await supabase.from('subtasks').insert({ todo_id: todoId, title: title.trim(), is_completed: false, order_index: (todos.find(t => t.id === todoId)?.subtasks?.length || 0) }).select().single();
+      if (!error && data) {
+        const updatedTodos = todos.map(t => t.id === todoId ? { ...t, subtasks: [...(t.subtasks || []), data] } : t);
+        setTodos(updatedTodos);
+        setNewSubtaskTitle('');
+      }
+    } else {
+      const tempId = `offline-subtask-${Date.now()}`;
+      await queueMutation('supabase', { op: 'insert', table: 'subtasks', data: { todo_id: todoId, title: title.trim(), is_completed: false, order_index: (todos.find(t => t.id === todoId)?.subtasks?.length || 0) } });
+      const updatedTodos = todos.map(t => t.id === todoId ? { ...t, subtasks: [...(t.subtasks || []), { id: tempId, todo_id: todoId, title: title.trim(), is_completed: false, order_index: (todos.find(tt => tt.id === todoId)?.subtasks?.length || 0), created_at: new Date().toISOString() }] } : t);
       setTodos(updatedTodos);
       setNewSubtaskTitle('');
     }
   };
 
   const toggleSubtask = async (subtaskId: string, isCompleted: boolean) => {
-    const { error } = await supabase
-      .from('subtasks')
-      .update({ is_completed: !isCompleted })
-      .eq('id', subtaskId);
-
-    if (!error) {
-      const updatedTodos = todos.map(t => ({
-        ...t,
-        subtasks: t.subtasks?.map(s => s.id === subtaskId ? { ...s, is_completed: !isCompleted } : s) || [],
-      }));
+    if (navigator.onLine) {
+      const { error } = await supabase.from('subtasks').update({ is_completed: !isCompleted }).eq('id', subtaskId);
+      if (!error) {
+        const updatedTodos = todos.map(t => ({ ...t, subtasks: t.subtasks?.map(s => s.id === subtaskId ? { ...s, is_completed: !isCompleted } : s) || [] }));
+        setTodos(updatedTodos);
+      }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'subtasks', data: { is_completed: !isCompleted }, match: { id: subtaskId } });
+      const updatedTodos = todos.map(t => ({ ...t, subtasks: t.subtasks?.map(s => s.id === subtaskId ? { ...s, is_completed: !isCompleted } : s) || [] }));
       setTodos(updatedTodos);
     }
   };
 
   const deleteSubtask = async (subtaskId: string, todoId: string) => {
-    const { error } = await supabase
-      .from('subtasks')
-      .delete()
-      .eq('id', subtaskId);
-
-    if (!error) {
-      const updatedTodos = todos.map(t => 
-        t.id === todoId 
-          ? { ...t, subtasks: t.subtasks?.filter(s => s.id !== subtaskId) || [] }
-          : t
-      );
+    if (navigator.onLine) {
+      const { error } = await supabase.from('subtasks').delete().eq('id', subtaskId);
+      if (!error) {
+        const updatedTodos = todos.map(t => t.id === todoId ? { ...t, subtasks: t.subtasks?.filter(s => s.id !== subtaskId) || [] } : t);
+        setTodos(updatedTodos);
+      }
+    } else {
+      await queueMutation('supabase', { op: 'delete', table: 'subtasks', match: { id: subtaskId } });
+      const updatedTodos = todos.map(t => t.id === todoId ? { ...t, subtasks: t.subtasks?.filter(s => s.id !== subtaskId) || [] } : t);
       setTodos(updatedTodos);
     }
   };
 
   const createReminder = async (todoId: string, scheduledAt: Date) => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from('reminders')
-      .insert({
-        todo_id: todoId,
-        user_id: user.id,
-        scheduled_at: scheduledAt.toISOString(),
-      })
-      .select()
-      .single();
-
-    if (!error && data) {
-      toast({ title: 'Reminder set' });
+    if (navigator.onLine) {
+      const { data, error } = await supabase.from('reminders').insert({ todo_id: todoId, user_id: user.id, scheduled_at: scheduledAt.toISOString() }).select().single();
+      if (!error && data) {
+        toast({ title: 'Reminder set' });
+        fetchReminders();
+      }
+    } else {
+      await queueMutation('supabase', { op: 'insert', table: 'reminders', data: { todo_id: todoId, user_id: user.id, scheduled_at: scheduledAt.toISOString() } });
+      toast({ title: 'Reminder set (offline)' });
       fetchReminders();
     }
   };
 
   const snoozeReminder = async (reminderId: string, snoozeMinutes: number) => {
     const snoozeUntil = new Date(Date.now() + snoozeMinutes * 60 * 1000).toISOString();
-    const { error } = await supabase
-      .from('reminders')
-      .update({ snoozed_until: snoozeUntil })
-      .eq('id', reminderId);
-
-    if (!error) {
-      toast({ title: `Reminder snoozed for ${snoozeMinutes} minutes` });
+    if (navigator.onLine) {
+      const { error } = await supabase.from('reminders').update({ snoozed_until: snoozeUntil }).eq('id', reminderId);
+      if (!error) { toast({ title: `Reminder snoozed for ${snoozeMinutes} minutes` }); fetchReminders(); }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'reminders', data: { snoozed_until: snoozeUntil }, match: { id: reminderId } });
+      toast({ title: `Reminder snoozed for ${snoozeMinutes} minutes (offline)` });
       fetchReminders();
     }
   };
 
   const dismissReminder = async (reminderId: string) => {
-    const { error } = await supabase
-      .from('reminders')
-      .update({ is_dismissed: true })
-      .eq('id', reminderId);
-
-    if (!error) {
+    if (navigator.onLine) {
+      const { error } = await supabase.from('reminders').update({ is_dismissed: true }).eq('id', reminderId);
+      if (!error) { fetchReminders(); }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'reminders', data: { is_dismissed: true }, match: { id: reminderId } });
       fetchReminders();
     }
   };
