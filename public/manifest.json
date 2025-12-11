@@ -1,0 +1,22 @@
+{
+  "name": "Card Companion",
+  "short_name": "CardComp",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0ea5a4",
+  "description": "Track cards, expenses and tasks — works offline and syncs when online.",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
