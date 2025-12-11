@@ -1,9 +1,11 @@
+import { useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { SplashScreen } from "@/components/SplashScreen";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import TodoApp from "./pages/TodoApp";
@@ -48,9 +50,27 @@ const AuthRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const App = () => {
+  const [splashComplete, setSplashComplete] = useState(false);
+
+  useEffect(() => {
+    // Optionally: always show splash on first load, or store in session
+    const hasSeenSplash = sessionStorage.getItem('splash-shown');
+    if (hasSeenSplash) {
+      setSplashComplete(true);
+    }
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        {!splashComplete && (
+          <SplashScreen
+            onComplete={() => {
+              setSplashComplete(true);
+              sessionStorage.setItem('splash-shown', 'true');
+            }}
+          />
+        )}
         <Toaster />
         <Sonner />
         <BrowserRouter>
