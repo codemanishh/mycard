@@ -17,7 +17,8 @@ import { EditBankDialog } from '@/components/EditBankDialog';
 import { AddBankDialog } from '@/components/AddBankDialog';
 import { ProfileDialog } from '@/components/ProfileDialog';
 import { Button } from '@/components/ui/button';
-import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle } from 'lucide-react';
+import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useOffline } from '@/contexts/OfflineContext';
@@ -59,8 +60,33 @@ const Index = () => {
   const [bankAddDialogOpen, setBankAddDialogOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [lendingTab, setLendingTab] = useState<'pending' | 'history'>('pending');
+  const [cardSortBy, setCardSortBy] = useState<'billingDate' | 'bankName'>('billingDate');
   
   const { toast } = useToast();
+
+  const getBillingDaysLeft = (billingDate: number) => {
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    let nextBillingDate = new Date(currentYear, currentMonth, billingDate);
+    if (currentDay >= billingDate) {
+      nextBillingDate = new Date(currentYear, currentMonth + 1, billingDate);
+    }
+    return Math.ceil((nextBillingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const sortedCards = [...cards].sort((a, b) => {
+    if (cardSortBy === 'bankName') {
+      const bankCompare = a.bankName.localeCompare(b.bankName);
+      if (bankCompare !== 0) return bankCompare;
+      return a.cardName.localeCompare(b.cardName);
+    }
+    // Default: Sort by billing date / days left (nearest deadline first)
+    const daysA = getBillingDaysLeft(a.billingDate);
+    const daysB = getBillingDaysLeft(b.billingDate);
+    return daysA - daysB;
+  });
 
   // Fetch data from database
   useEffect(() => {
@@ -625,6 +651,8 @@ const Index = () => {
   };
 
   const totalBill = cards.reduce((sum, card) => sum + card.currentBill, 0);
+  const totalBankBalance = bankAccounts.reduce((sum, bank) => sum + bank.balance, 0);
+  const netActualBalance = totalBankBalance - totalBill;
   const activeCards = cards.filter(c => c.status === 'active').length;
   const upcomingBills = cards.filter(card => {
     const today = new Date().getDate();
@@ -729,6 +757,40 @@ const Index = () => {
             </Button>
           </div>
           
+          {/* Actual Net Balance Breakdown Card */}
+          <div className="mt-3 md:mt-4 p-3.5 md:p-4 rounded-xl md:rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white shadow-lg animate-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-2 border-b border-white/20">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-400/20 rounded-lg">
+                  <TrendingUp className="w-4 h-4 text-emerald-300" />
+                </div>
+                <span className="text-xs md:text-sm font-semibold text-white">Actual Net Balance</span>
+              </div>
+              <span className="text-[10px] md:text-xs text-white/70">Total Bank Funds minus Pending Card Bills</span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center pt-1">
+              <div>
+                <p className="text-[10px] md:text-xs text-white/70">Bank Balance</p>
+                <p className="text-xs md:text-base font-bold text-emerald-300">₹{totalBankBalance.toLocaleString('en-IN')}</p>
+              </div>
+
+              <div className="border-x border-white/20 px-1">
+                <p className="text-[10px] md:text-xs text-white/70">- Bills to Pay</p>
+                <p className="text-xs md:text-base font-bold text-red-300">₹{totalBill.toLocaleString('en-IN')}</p>
+              </div>
+
+              <div>
+                <p className="text-[10px] md:text-xs text-white/90 font-medium">= Actual Balance</p>
+                <p className={`text-xs md:text-base font-extrabold ${
+                  netActualBalance >= 0 ? 'text-emerald-200' : 'text-red-200'
+                }`}>
+                  ₹{netActualBalance.toLocaleString('en-IN')}
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Stats Cards */}
           <div className="grid grid-cols-3 gap-2 md:gap-3 mt-3 md:mt-4">
             <div className="bg-white/15 backdrop-blur-md rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-white/20">
@@ -765,6 +827,26 @@ const Index = () => {
       </header>
 
       <main className="max-w-6xl mx-auto px-3 md:px-6 py-4 md:py-6 pb-20 md:pb-24 -mt-2 md:-mt-4 relative z-10">
+        {/* Smart To-Do Nudges Banner */}
+        <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-primary/5 to-transparent border border-amber-500/20 flex items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl">
+              <ListTodo className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-foreground">Smart Financial To-Dos & Auto-Scan</p>
+              <p className="text-[11px] text-muted-foreground">Auto-detect missed bills, pending lendings & essential money habits.</p>
+            </div>
+          </div>
+          <Button
+            onClick={() => navigate('/todo')}
+            size="sm"
+            className="rounded-xl text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex-shrink-0"
+          >
+            Open To-Do <ArrowLeft className="w-3 h-3 ml-1 rotate-180" />
+          </Button>
+        </div>
+
         <Tabs defaultValue="cards" className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-4 md:mb-6 bg-card/80 backdrop-blur-lg border border-border/50 shadow-card p-1 h-10 md:h-12 rounded-xl md:rounded-2xl">
             <TabsTrigger value="cards" className="rounded-lg md:rounded-xl text-xs md:text-sm data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md transition-all">Cards</TabsTrigger>
@@ -775,22 +857,58 @@ const Index = () => {
           <TabsContent value="cards" className="animate-fade-in">
             {viewMode === 'circles' ? (
               <>
-                <div className="flex justify-between items-center mb-4 md:mb-6">
-                  <h2 className="text-lg md:text-xl font-bold text-foreground">Your Cards</h2>
-                  {cards.length > 0 && (
-                    <Button 
-                      onClick={() => setViewMode('carousel')}
-                      variant="outline"
-                      size="sm"
-                      className="rounded-lg md:rounded-xl border-border/50 hover:bg-primary hover:text-white hover:border-primary transition-all text-xs md:text-sm h-8 md:h-9"
-                    >
-                      <Grid3x3 className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1.5 md:mr-2" />
-                      See All
-                    </Button>
-                  )}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 md:mb-6">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg md:text-xl font-bold text-foreground">Your Cards</h2>
+                    <span className="text-xs text-muted-foreground font-medium">({sortedCards.length})</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Sort Options */}
+                    <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border/40 text-xs">
+                      <button
+                        onClick={() => setCardSortBy('billingDate')}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                          cardSortBy === 'billingDate'
+                            ? "bg-background text-foreground shadow-sm font-semibold"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                        title="Order by billing date / due date"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Due Date (Default)</span>
+                      </button>
+                      <button
+                        onClick={() => setCardSortBy('bankName')}
+                        className={cn(
+                          "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                          cardSortBy === 'bankName'
+                            ? "bg-background text-foreground shadow-sm font-semibold"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                        title="Group by bank names together"
+                      >
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>By Bank</span>
+                      </button>
+                    </div>
+
+                    {cards.length > 0 && (
+                      <Button 
+                        onClick={() => setViewMode('carousel')}
+                        variant="outline"
+                        size="sm"
+                        className="rounded-lg md:rounded-xl border-border/50 hover:bg-primary hover:text-white hover:border-primary transition-all text-xs md:text-sm h-8 md:h-9"
+                      >
+                        <Grid3x3 className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1.5 md:mr-2" />
+                        See All
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
-                {cards.length === 0 ? (
+                {sortedCards.length === 0 ? (
                   <Card className="p-8 md:p-12 text-center shadow-card border-border/50 rounded-2xl md:rounded-3xl bg-gradient-to-br from-card to-secondary/30 animate-scale-in">
                     <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 rounded-xl md:rounded-2xl bg-primary/10 flex items-center justify-center">
                       <CreditCard className="w-8 h-8 md:w-10 md:h-10 text-primary" />
@@ -806,7 +924,7 @@ const Index = () => {
                   </Card>
                 ) : (
                   <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6 lg:gap-8 justify-items-center">
-                    {cards.map((card, index) => (
+                    {sortedCards.map((card, index) => (
                       <CardCircle
                         key={card.id}
                         card={card}
@@ -819,17 +937,47 @@ const Index = () => {
               </>
             ) : (
               <>
-                <div className="flex items-center gap-4 mb-8">
-                  <Button
-                    onClick={() => setViewMode('circles')}
-                    variant="ghost"
-                    size="sm"
-                    className="rounded-xl hover:bg-primary/10"
-                  >
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Back
-                  </Button>
-                  <h2 className="text-xl font-semibold text-foreground">All Cards</h2>
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <Button
+                      onClick={() => setViewMode('circles')}
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-xl hover:bg-primary/10"
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Back
+                    </Button>
+                    <h2 className="text-xl font-semibold text-foreground">All Cards</h2>
+                  </div>
+
+                  {/* Sort options in detail view */}
+                  <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border/40 text-xs">
+                    <button
+                      onClick={() => setCardSortBy('billingDate')}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                        cardSortBy === 'billingDate'
+                          ? "bg-background text-foreground shadow-sm font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Due Date</span>
+                    </button>
+                    <button
+                      onClick={() => setCardSortBy('bankName')}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                        cardSortBy === 'bankName'
+                          ? "bg-background text-foreground shadow-sm font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>By Bank</span>
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="relative">
@@ -842,7 +990,7 @@ const Index = () => {
                     className="w-full max-w-xl mx-auto"
                   >
                     <CarouselContent className="-mt-4 h-[600px]">
-                      {cards.map((card, index) => (
+                      {sortedCards.map((card, index) => (
                         <CarouselItem key={card.id} className="pt-4">
                           <div className="p-1 animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
                             <div className="mb-4 text-center">

@@ -28,8 +28,7 @@ export const CardCircle = ({ card, onClick, index }: CardCircleProps) => {
   };
 
   const daysLeft = getBillingDaysLeft();
-  const isDue = daysLeft <= 3 && card.currentBill > 0;
-  const isUpcoming = daysLeft <= 7 && card.currentBill > 0;
+  const isAlert = card.currentBill > 0 && daysLeft <= 5;
   const bankColor = getBankColor(card.bankName);
 
   return (
@@ -57,23 +56,21 @@ export const CardCircle = ({ card, onClick, index }: CardCircleProps) => {
             "transition-all duration-300 group-hover:scale-105 group-active:scale-95",
             "bg-card shadow-card group-hover:shadow-elevated",
             "border-2",
-            isDue && "border-destructive ring-2 md:ring-4 ring-destructive/20",
-            isUpcoming && !isDue && "border-warning ring-2 md:ring-4 ring-warning/20",
-            !isUpcoming && !isDue && "border-border"
+            isAlert 
+              ? "border-red-500 ring-2 md:ring-4 ring-red-500/20" 
+              : "border-emerald-500 ring-2 md:ring-4 ring-emerald-500/20"
           )}
         >
           <BankLogo bankName={card.bankName} size="md" />
         </div>
         
-        {/* Badge */}
-        {card.currentBill > 0 && daysLeft <= 7 && (
-          <span className={cn(
-            "absolute -top-0.5 -right-0.5 md:-top-1 md:-right-1 min-w-[18px] md:min-w-[22px] h-[18px] md:h-[22px] px-1 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-bold shadow-lg",
-            isDue ? "bg-destructive text-white" : "bg-warning text-white"
-          )}>
-            {daysLeft}d
-          </span>
-        )}
+        {/* Countdown Badge - Displayed on ALL cards */}
+        <span className={cn(
+          "absolute -top-1 -right-1 md:-top-1.5 md:-right-1.5 min-w-[20px] md:min-w-[24px] h-[20px] md:h-[24px] px-1 rounded-full flex items-center justify-center text-[9px] md:text-[11px] font-bold shadow-md z-10 transition-colors",
+          isAlert ? "bg-red-500 text-white" : "bg-emerald-500 text-white"
+        )}>
+          {daysLeft}d
+        </span>
       </button>
       
       <div className="text-center space-y-0 md:space-y-0.5 max-w-[70px] md:max-w-[90px]">

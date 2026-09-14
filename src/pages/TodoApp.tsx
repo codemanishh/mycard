@@ -23,6 +23,10 @@ import {
 import { format } from 'date-fns';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { generateTaskSummary, suggestNextActions } from '@/lib/aiUtils';
+import { detectMissedFinancialTasks, SuggestedTask } from '@/lib/smartAutoTodo';
+import { SmartTodoDetector } from '@/components/SmartTodoDetector';
+import { CreditCard as CreditCardType } from '@/types/creditCard';
+import { BankAccount, Lending } from '@/types/expense';
 
 interface Subtask {
   id: string;
@@ -167,9 +171,109 @@ const TodoApp = () => {
   const [assigneeProfile, setAssigneeProfile] = useState<{ id: string; full_name?: string; avatar_url?: string; email?: string } | null>(null);
   const [profileCache, setProfileCache] = useState<Record<string, { full_name?: string; avatar_url?: string; email?: string }>>({});
 
+  const [detectedTasks, setDetectedTasks] = useState<SuggestedTask[]>([]);
+
   useEffect(() => {
     if (user) fetchTodos();
   }, [user]);
+
+  const runAutoDetection = async (currentTodos: Todo[]) => {
+    try {
+      const [cardsRes, banksRes, lendingsRes] = await Promise.all([
+        supabase.from('credit_cards').select('*'),
+        supabase.from('bank_accounts').select('*'),
+        supabase.from('lendings').select('*'),
+      ]);
+
+      const cards: CreditCardType[] = (cardsRes.data || []).map((c: any) => ({
+        id: c.id,
+        cardName: c.card_name,
+        bankName: c.bank_name,
+        billingDate: Number(c.billing_date),
+        currentBill: Number(c.current_bill) || 0,
+        limitAmount: Number(c.limit_amount) || 0,
+        limitType: c.limit_type,
+        status: c.status,
+        notes: c.notes || '',
+        createdAt: c.created_at,
+      }));
+
+      const bankAccounts: BankAccount[] = (banksRes.data || []).map((b: any) => ({
+        id: b.id,
+        bankName: b.bank_name,
+        balance: Number(b.balance) || 0,
+        type: b.type,
+      }));
+
+      const lendings: Lending[] = (lendingsRes.data || []).map((l: any) => ({
+        id: l.id,
+        personName: l.person_name,
+        amount: Number(l.amount) || 0,
+        givenDate: l.given_date,
+        reminderDate: l.reminder_date || undefined,
+        borrowerPhone: l.borrower_phone || undefined,
+        isReturned: l.is_returned || false,
+        note: l.note || undefined,
+        createdAt: l.created_at,
+      }));
+
+      const existingTitles = currentTodos.map(t => t.title);
+      const found = detectMissedFinancialTasks(cards, bankAccounts, lendings, existingTitles);
+      setDetectedTasks(found);
+    } catch (err) {
+      console.warn('Auto detection scan error:', err);
+    }
+  };
+
+  const handleAddSingleTask = async (task: {
+    title: string;
+    description?: string;
+    category: string;
+    priority: 'low' | 'medium' | 'high';
+    due_date?: string;
+  }) => {
+    if (!user) return;
+    const newTodoData = {
+      user_id: user.id,
+      title: task.title,
+      description: task.description || null,
+      due_date: task.due_date || null,
+      priority: task.priority,
+      category: task.category || 'Finance',
+      is_completed: false,
+    };
+
+    if (navigator.onLine) {
+      const { data, error } = await supabase.from('todos').insert(newTodoData).select().single();
+      if (!error && data) {
+        const addedTodo = {
+          ...data,
+          priority: data.priority as 'low' | 'medium' | 'high',
+          description: data.description || undefined,
+          due_date: data.due_date || undefined,
+          subtasks: [],
+        };
+        setTodos(prev => sortTodosByPriorityAndDate([addedTodo as any, ...prev]));
+        toast({ title: 'Task Added', description: task.title });
+      }
+    } else {
+      const tempId = `offline-todo-${Date.now()}`;
+      await queueMutation('supabase', { op: 'insert', table: 'todos', data: newTodoData });
+      const newTodo = { id: tempId, ...newTodoData, created_at: new Date().toISOString(), subtasks: [] } as any;
+      setTodos(prev => sortTodosByPriorityAndDate([newTodo, ...prev]));
+      toast({ title: 'Task Added (offline)', description: task.title });
+    }
+
+    setDetectedTasks(prev => prev.filter(t => t.title.toLowerCase().trim() !== task.title.toLowerCase().trim()));
+  };
+
+  const handleAddAllDetectedTasks = async () => {
+    for (const task of detectedTasks) {
+      await handleAddSingleTask(task);
+    }
+    toast({ title: `Added ${detectedTasks.length} Missed Tasks!` });
+    setDetectedTasks([]);
+  };
 
   const getProfileById = async (userId: string) => {
     // profileCache keys are auth user ids (profiles.user_id)
@@ -244,6 +348,9 @@ const TodoApp = () => {
       for (const id of assigneeIds) {
         await getProfileById(id as string);
       }
+
+      // Run smart auto-detection scan for missed financial tasks
+      runAutoDetection(mappedTodos);
     }
     setLoading(false);
   };
@@ -734,6 +841,13 @@ const TodoApp = () => {
             ))}
           </div>
         )}
+
+        {/* Smart Auto-Detection & Researched Templates Banner */}
+        <SmartTodoDetector
+          detectedTasks={detectedTasks}
+          onAddTask={handleAddSingleTask}
+          onAddAllDetected={handleAddAllDetectedTasks}
+        />
 
         {/* Tabs */}
         <div className="mb-3 sm:mb-4 overflow-x-auto">

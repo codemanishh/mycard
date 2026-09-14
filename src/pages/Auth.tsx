@@ -49,8 +49,8 @@ const Auth = () => {
           <p className="text-muted-foreground mt-1">Manage your money smartly</p>
         </div>
 
-        <Card className="p-6 shadow-card border-border/50 rounded-3xl">
-          <h2 className="text-xl font-bold text-center mb-6">Welcome</h2>
+        <Card className="p-6 shadow-card border-border/50 rounded-3xl space-y-4">
+          <h2 className="text-xl font-bold text-center mb-2">Welcome</h2>
 
           <Button
             onClick={handleGoogleLogin}

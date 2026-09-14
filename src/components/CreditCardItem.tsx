@@ -32,16 +32,14 @@ export const CreditCardItem = ({ card, onEdit, onDelete }: CreditCardItemProps) 
   };
 
   const daysLeft = getBillingDaysLeft();
-  const isUpcoming = daysLeft <= 7 && card.currentBill > 0;
-  const isDue = daysLeft <= 3 && card.currentBill > 0;
+  const isAlert = card.currentBill > 0 && daysLeft <= 5;
 
   return (
     <Card 
       className={cn(
-        "p-5 transition-all duration-300 hover:shadow-lg border-2",
+        "p-5 transition-all duration-300 hover:shadow-lg border-2 relative overflow-hidden",
         "bg-gradient-to-br from-card to-card/50",
-        isUpcoming && "border-warning/30 bg-warning/5",
-        isDue && "border-destructive/30 bg-destructive/5",
+        isAlert ? "border-red-500/60 bg-red-500/5" : "border-emerald-500/60 bg-emerald-500/5",
         card.status === 'blocked' && "opacity-70"
       )}
     >
@@ -49,7 +47,17 @@ export const CreditCardItem = ({ card, onEdit, onDelete }: CreditCardItemProps) 
         <div className="flex items-center gap-3">
           <BankLogo bankName={card.bankName} size="md" />
           <div>
-            <h3 className="font-semibold text-lg text-foreground">{card.cardName}</h3>
+            <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
+              {card.cardName}
+              <Badge 
+                className={cn(
+                  "text-[10px] px-2 py-0.5 font-bold text-white rounded-full",
+                  isAlert ? "bg-red-500" : "bg-emerald-500"
+                )}
+              >
+                {daysLeft}d left
+              </Badge>
+            </h3>
             <p className="text-sm text-muted-foreground">{card.bankName}</p>
           </div>
         </div>
@@ -73,17 +81,15 @@ export const CreditCardItem = ({ card, onEdit, onDelete }: CreditCardItemProps) 
           <span className="font-semibold text-foreground">{card.billingDate}{getOrdinalSuffix(card.billingDate)} of month</span>
         </div>
 
-        {daysLeft <= 10 && card.currentBill > 0 && (
-          <div className={cn(
-            "flex items-center gap-2 p-2 rounded-lg",
-            isDue ? "bg-destructive/10 text-destructive" : "bg-warning/10 text-warning"
-          )}>
-            <AlertCircle className="w-4 h-4" />
-            <span className="text-sm font-medium">
-              {daysLeft === 0 ? 'Due today!' : `${daysLeft} day${daysLeft > 1 ? 's' : ''} left`}
-            </span>
-          </div>
-        )}
+        <div className={cn(
+          "flex items-center gap-2 p-2 rounded-lg text-sm font-medium",
+          isAlert ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+        )}>
+          <AlertCircle className="w-4 h-4" />
+          <span>
+            {isAlert ? (daysLeft === 0 ? '⚠️ Bill due today!' : `⚠️ Due in ${daysLeft} days!`) : `🟢 ${daysLeft} days until next billing`}
+          </span>
+        </div>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-muted-foreground">
