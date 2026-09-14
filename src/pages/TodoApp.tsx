@@ -851,7 +851,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
   const pendingCount = todos.length - completedCount;
 
   // Get top priority tasks for summary (max 3)
-  const topPriorityTasks = sortTodosByPriorityAndDate(
+  const topPriorityTasks = sortTodosByDueDate(
     todos.filter(t => !t.is_completed)
   ).slice(0, 3);
 
