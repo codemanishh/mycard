@@ -1,18 +1,18 @@
 import { CreditCard as CreditCardType } from '@/types/creditCard';
-import { BankLogo } from '@/components/BankLogo';
+import { CreditCardVisual } from '@/components/CreditCardVisual';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, IndianRupee, CreditCard, AlertCircle, Edit, Trash2 } from 'lucide-react';
+import { Calendar, IndianRupee, Edit, Trash2, Receipt, AlertCircle, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CreditCardItemProps {
   card: CreditCardType;
   onEdit: (card: CreditCardType) => void;
   onDelete: (id: string) => void;
+  onAddExpense?: (card: CreditCardType) => void;
 }
 
-export const CreditCardItem = ({ card, onEdit, onDelete }: CreditCardItemProps) => {
+export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense }: CreditCardItemProps) => {
   const getBillingDaysLeft = () => {
     const today = new Date();
     const currentDay = today.getDate();
@@ -20,127 +20,115 @@ export const CreditCardItem = ({ card, onEdit, onDelete }: CreditCardItemProps) 
     const currentYear = today.getFullYear();
     
     let nextBillingDate = new Date(currentYear, currentMonth, card.billingDate);
-    
     if (currentDay >= card.billingDate) {
       nextBillingDate = new Date(currentYear, currentMonth + 1, card.billingDate);
     }
     
     const diffTime = nextBillingDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    return diffDays;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const daysLeft = getBillingDaysLeft();
   const isAlert = card.currentBill > 0 && daysLeft <= 5;
+  const isDueToday = card.currentBill > 0 && daysLeft === 0;
+
+  const availableCredit = Math.max(0, card.limitAmount - card.currentBill);
+  const utilizationPercent = card.limitAmount > 0 
+    ? Math.min(100, Math.round((card.currentBill / card.limitAmount) * 100))
+    : 0;
 
   return (
-    <Card 
-      className={cn(
-        "p-5 transition-all duration-300 hover:shadow-lg border-2 relative overflow-hidden",
-        "bg-gradient-to-br from-card to-card/50",
-        isAlert ? "border-red-500/60 bg-red-500/5" : "border-emerald-500/60 bg-emerald-500/5",
-        card.status === 'blocked' && "opacity-70"
-      )}
-    >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <BankLogo bankName={card.bankName} size="md" />
-          <div>
-            <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
-              {card.cardName}
-              <Badge 
-                className={cn(
-                  "text-[10px] px-2 py-0.5 font-bold text-white rounded-full",
-                  isAlert ? "bg-red-500" : "bg-emerald-500"
-                )}
-              >
-                {daysLeft}d left
-              </Badge>
-            </h3>
-            <p className="text-sm text-muted-foreground">{card.bankName}</p>
-          </div>
-        </div>
-        
-        <Badge 
-          variant={card.status === 'active' ? 'default' : 'destructive'}
-          className={cn(
-            card.status === 'active' && 'bg-success text-success-foreground'
-          )}
-        >
-          {card.status}
-        </Badge>
-      </div>
+    <div className="group space-y-3 transition-all duration-300">
+      {/* 3D Physical Credit Card Graphic */}
+      <CreditCardVisual 
+        card={card} 
+        onClick={() => onEdit(card)}
+        className="group-hover:scale-[1.02] group-hover:shadow-2xl transition-all"
+      />
 
-      <div className="space-y-3 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Calendar className="w-4 h-4" />
-            <span className="text-sm">Billing Date</span>
-          </div>
-          <span className="font-semibold text-foreground">{card.billingDate}{getOrdinalSuffix(card.billingDate)} of month</span>
-        </div>
-
+      {/* Info & Action Controls Card */}
+      <Card className="p-4 rounded-2xl border border-border/50 bg-card/80 backdrop-blur-md shadow-card space-y-3">
+        {/* Billing Status Message */}
         <div className={cn(
-          "flex items-center gap-2 p-2 rounded-lg text-sm font-medium",
-          isAlert ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          "flex items-center gap-2 p-2.5 rounded-xl text-xs font-semibold transition-colors",
+          isDueToday 
+            ? "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30"
+            : isAlert 
+              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" 
+              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
         )}>
-          <AlertCircle className="w-4 h-4" />
+          <AlertCircle className="w-4 h-4 shrink-0" />
           <span>
-            {isAlert ? (daysLeft === 0 ? '⚠️ Bill due today!' : `⚠️ Due in ${daysLeft} days!`) : `🟢 ${daysLeft} days until next billing`}
+            {isDueToday 
+              ? "⚠️ Bill Due Today! Please make payment soon." 
+              : isAlert 
+                ? `⚠️ Bill due in ${daysLeft} days!` 
+                : `🟢 Next billing in ${daysLeft} days (${card.billingDate}${getOrdinalSuffix(card.billingDate)} of month)`
+            }
           </span>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <IndianRupee className="w-4 h-4" />
-            <span className="text-sm">Current Bill</span>
+        {/* Detailed Metrics */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="p-2.5 rounded-xl bg-muted/40 border border-border/30">
+            <span className="text-muted-foreground block text-[11px] mb-0.5">Available Credit</span>
+            <span className="font-bold text-sm text-foreground">₹{availableCredit.toLocaleString('en-IN')}</span>
           </div>
-          <span className={cn(
-            "font-bold text-lg",
-            card.currentBill > 0 ? "text-primary" : "text-muted-foreground"
-          )}>
-            ₹{card.currentBill.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-          </span>
-        </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <CreditCard className="w-4 h-4" />
-            <span className="text-sm">Limit</span>
+          <div className="p-2.5 rounded-xl bg-muted/40 border border-border/30">
+            <span className="text-muted-foreground block text-[11px] mb-0.5">Utilization</span>
+            <span className={cn(
+              "font-bold text-sm",
+              utilizationPercent > 75 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"
+            )}>
+              {utilizationPercent}% of ₹{card.limitAmount.toLocaleString('en-IN')}
+            </span>
           </div>
-          <span className="text-sm text-foreground">
-            ₹{card.limitAmount.toLocaleString('en-IN')} ({card.limitType.replace('-', ' ')})
-          </span>
         </div>
-      </div>
 
-      {card.notes && (
-        <p className="text-xs text-muted-foreground mb-4 p-2 bg-muted/50 rounded">
-          {card.notes}
-        </p>
-      )}
+        {/* Notes snippet if present */}
+        {card.notes && (
+          <p className="text-[11px] text-muted-foreground italic px-3 py-1.5 bg-muted/30 rounded-lg border border-border/30 truncate">
+            {card.notes}
+          </p>
+        )}
 
-      <div className="flex gap-2">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="flex-1"
-          onClick={() => onEdit(card)}
-        >
-          <Edit className="w-4 h-4 mr-1" />
-          Edit
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={() => onDelete(card.id)}
-        >
-          <Trash2 className="w-4 h-4" />
-        </Button>
-      </div>
-    </Card>
+        {/* Quick Actions */}
+        <div className="flex items-center gap-2 pt-1">
+          {onAddExpense && (
+            <Button 
+              size="sm" 
+              className="flex-1 rounded-xl bg-primary hover:bg-primary/90 text-white font-medium text-xs h-9 shadow-sm"
+              onClick={() => onAddExpense(card)}
+            >
+              <Receipt className="w-3.5 h-3.5 mr-1.5" />
+              + Expense
+            </Button>
+          )}
+
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="rounded-xl border-border/60 hover:bg-muted font-medium text-xs h-9 px-3"
+            onClick={() => onEdit(card)}
+            title="Edit Card Details"
+          >
+            <Edit className="w-3.5 h-3.5 mr-1" />
+            Edit
+          </Button>
+
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 h-9 px-3"
+            onClick={() => onDelete(card.id)}
+            title="Delete Card"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 };
 

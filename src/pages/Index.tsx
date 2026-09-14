@@ -46,7 +46,7 @@ const Index = () => {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
-  const [viewMode, setViewMode] = useState<'circles' | 'carousel'>('circles');
+  const [viewMode, setViewMode] = useState<'grid' | 'circles' | 'carousel'>('grid');
   const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
@@ -889,179 +889,258 @@ const Index = () => {
             <TabsTrigger value="todo" className="rounded-lg md:rounded-xl text-xs md:text-sm data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md transition-all">To-Do</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="cards" className="animate-fade-in">
-            {viewMode === 'circles' ? (
-              <>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 md:mb-6">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg md:text-xl font-bold text-foreground">Your Cards</h2>
-                    <span className="text-xs text-muted-foreground font-medium">({sortedCards.length})</span>
+          <TabsContent value="cards" className="animate-fade-in space-y-5">
+            {/* Credit Portfolio Summary Banner */}
+            {cards.length > 0 && (
+              <div className="p-4 md:p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-elevated border border-white/10 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1 text-xs text-white/70 font-semibold uppercase tracking-wider">
+                      <CreditCard className="w-4 h-4 text-amber-400" />
+                      <span>Credit Cards Portfolio</span>
+                    </div>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-2xl md:text-3xl font-extrabold font-mono text-amber-300">
+                        ₹{totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-xs text-white/70">
+                        Total Bills Due
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Sort Options */}
-                    <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border/40 text-xs">
-                      <button
-                        onClick={() => setCardSortBy('billingDate')}
-                        className={cn(
-                          "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
-                          cardSortBy === 'billingDate'
-                            ? "bg-background text-foreground shadow-sm font-semibold"
-                            : "text-muted-foreground hover:text-foreground"
-                        )}
-                        title="Order by billing date / due date"
-                      >
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>Due Date (Default)</span>
-                      </button>
-                      <button
-                        onClick={() => setCardSortBy('bankName')}
-                        className={cn(
-                          "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
-                          cardSortBy === 'bankName'
-                            ? "bg-background text-foreground shadow-sm font-semibold"
-                            : "text-muted-foreground hover:text-foreground"
-                        )}
-                        title="Group by bank names together"
-                      >
-                        <Building2 className="w-3.5 h-3.5" />
-                        <span>By Bank</span>
-                      </button>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-4 text-xs">
+                    <div className="p-2.5 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md">
+                      <span className="text-white/60 block text-[11px]">Total Limit</span>
+                      <span className="font-bold text-sm text-white">
+                        ₹{cards.reduce((sum, c) => sum + c.limitAmount, 0).toLocaleString('en-IN')}
+                      </span>
                     </div>
-
-                    {cards.length > 0 && (
-                      <Button 
-                        onClick={() => setViewMode('carousel')}
-                        variant="outline"
-                        size="sm"
-                        className="rounded-lg md:rounded-xl border-border/50 hover:bg-primary hover:text-white hover:border-primary transition-all text-xs md:text-sm h-8 md:h-9"
-                      >
-                        <Grid3x3 className="w-3.5 h-3.5 md:w-4 md:h-4 mr-1.5 md:mr-2" />
-                        See All
-                      </Button>
-                    )}
+                    <div className="p-2.5 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md">
+                      <span className="text-white/60 block text-[11px]">Available Credit</span>
+                      <span className="font-bold text-sm text-emerald-400">
+                        ₹{Math.max(0, cards.reduce((sum, c) => sum + c.limitAmount, 0) - totalBill).toLocaleString('en-IN')}
+                      </span>
+                    </div>
+                    <div className="p-2.5 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md col-span-2 sm:col-span-1">
+                      <span className="text-white/60 block text-[11px]">Utilization</span>
+                      <span className={cn(
+                        "font-bold text-sm",
+                        (cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
+                          ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
+                          : 0) > 75 
+                          ? "text-red-400" 
+                          : "text-emerald-400"
+                      )}>
+                        {cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
+                          ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
+                          : 0}% Used
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {sortedCards.length === 0 ? (
-                  <Card className="p-8 md:p-12 text-center shadow-card border-border/50 rounded-2xl md:rounded-3xl bg-gradient-to-br from-card to-secondary/30 animate-scale-in">
-                    <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 rounded-xl md:rounded-2xl bg-primary/10 flex items-center justify-center">
-                      <CreditCard className="w-8 h-8 md:w-10 md:h-10 text-primary" />
-                    </div>
-                    <h3 className="text-lg md:text-xl font-bold mb-2">No cards yet</h3>
-                    <p className="text-muted-foreground mb-4 md:mb-6 text-sm md:text-base">
-                      Start tracking your credit card bills by adding your first card
-                    </p>
-                    <Button onClick={() => setDialogOpen(true)} className="rounded-xl px-5 md:px-6 text-sm md:text-base">
-                      <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2" />
-                      Add Your First Card
-                    </Button>
-                  </Card>
-                ) : (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4 md:gap-6 lg:gap-8 justify-items-center">
-                    {sortedCards.map((card, index) => (
-                      <CardCircle
-                        key={card.id}
-                        card={card}
-                        onClick={handleCardClick}
-                        index={index}
+                {/* Utilization Progress Bar */}
+                {cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 && (
+                  <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/10">
+                      <div 
+                        className={cn(
+                          "h-full rounded-full transition-all duration-500",
+                          Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) > 75 
+                            ? "bg-red-500" 
+                            : Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) > 50 
+                              ? "bg-amber-400" 
+                              : "bg-emerald-400"
+                        )}
+                        style={{ 
+                          width: `${Math.min(100, Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100))}%` 
+                        }}
                       />
-                    ))}
+                    </div>
+                    <span className="text-[11px] font-semibold text-white/80 shrink-0">
+                      {Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) < 30 
+                        ? '🟢 Safe Ratio' 
+                        : Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) < 70 
+                          ? '🟡 Moderate' 
+                          : '🔴 High Usage'}
+                    </span>
                   </div>
                 )}
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-4">
-                    <Button
-                      onClick={() => setViewMode('circles')}
-                      variant="ghost"
-                      size="sm"
-                      className="rounded-xl hover:bg-primary/10"
-                    >
-                      <ArrowLeft className="w-4 h-4 mr-2" />
-                      Back
-                    </Button>
-                    <h2 className="text-xl font-semibold text-foreground">All Cards</h2>
-                  </div>
+              </div>
+            )}
 
-                  {/* Sort options in detail view */}
-                  <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border/40 text-xs">
-                    <button
-                      onClick={() => setCardSortBy('billingDate')}
-                      className={cn(
-                        "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
-                        cardSortBy === 'billingDate'
-                          ? "bg-background text-foreground shadow-sm font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>Due Date</span>
-                    </button>
-                    <button
-                      onClick={() => setCardSortBy('bankName')}
-                      className={cn(
-                        "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
-                        cardSortBy === 'bankName'
-                          ? "bg-background text-foreground shadow-sm font-semibold"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>By Bank</span>
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="relative">
-                  <Carousel 
-                    opts={{
-                      align: "center",
-                      loop: false,
-                    }}
-                    orientation="vertical"
-                    className="w-full max-w-xl mx-auto"
+            {/* Header & View Switcher Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg md:text-xl font-bold text-foreground">Your Cards</h2>
+                <span className="text-xs text-muted-foreground font-semibold px-2 py-0.5 bg-muted rounded-full">
+                  {sortedCards.length} Cards
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* View Switcher: Grid vs Circles vs Deck Slider */}
+                <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border/40 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                      viewMode === 'grid'
+                        ? "bg-background text-foreground shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
                   >
-                    <CarouselContent className="-mt-4 h-[600px]">
-                      {sortedCards.map((card, index) => (
-                        <CarouselItem key={card.id} className="pt-4">
-                          <div className="p-1 animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
-                            <div className="mb-4 text-center">
-                              <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                                {index + 1}
-                              </span>
-                            </div>
-                            <CreditCardItem
-                              card={card}
-                              onEdit={handleEditCard}
-                              onDelete={handleDeleteCard}
-                            />
-                            {/* WhatsApp Reminder Button */}
-                            {card.currentBill > 0 && (
-                              <Button
-                                onClick={() => handleSendWhatsAppReminder(card)}
-                                variant="outline"
-                                size="sm"
-                                className="w-full mt-2 rounded-xl border-success/50 text-success hover:bg-success/10"
-                              >
-                                <MessageCircle className="w-4 h-4 mr-2" />
-                                Send WhatsApp Reminder
-                              </Button>
-                            )}
-                          </div>
-                        </CarouselItem>
-                      ))}
-                    </CarouselContent>
-                    <CarouselPrevious className="top-0" />
-                    <CarouselNext className="bottom-0" />
-                  </Carousel>
-                  <div className="text-center mt-6 text-sm text-muted-foreground">
-                    Scroll or use arrows to navigate • {cards.length} card{cards.length > 1 ? 's' : ''} total
-                  </div>
+                    <Grid3x3 className="w-3.5 h-3.5" />
+                    <span>Card Grid</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('circles')}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                      viewMode === 'circles'
+                        ? "bg-background text-foreground shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>Circles</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('carousel')}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                      viewMode === 'carousel'
+                        ? "bg-background text-foreground shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Deck</span>
+                  </button>
                 </div>
-              </>
+
+                {/* Sort Options */}
+                <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border/40 text-xs">
+                  <button
+                    onClick={() => setCardSortBy('billingDate')}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                      cardSortBy === 'billingDate'
+                        ? "bg-background text-foreground shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Order by billing date / due date"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Due Date</span>
+                  </button>
+                  <button
+                    onClick={() => setCardSortBy('bankName')}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                      cardSortBy === 'bankName'
+                        ? "bg-background text-foreground shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                    title="Group by bank names together"
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>By Bank</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Empty State */}
+            {sortedCards.length === 0 ? (
+              <Card className="p-8 md:p-12 text-center shadow-card border-border/50 rounded-2xl md:rounded-3xl bg-gradient-to-br from-card to-secondary/30 animate-scale-in">
+                <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 rounded-xl md:rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <CreditCard className="w-8 h-8 md:w-10 md:h-10 text-primary" />
+                </div>
+                <h3 className="text-lg md:text-xl font-bold mb-2">No cards added yet</h3>
+                <p className="text-muted-foreground mb-4 md:mb-6 text-sm md:text-base">
+                  Start tracking your credit card bills by adding your first card
+                </p>
+                <Button onClick={() => setDialogOpen(true)} className="rounded-xl px-5 md:px-6 text-sm md:text-base">
+                  <Plus className="w-4 h-4 md:w-5 md:h-5 mr-2" />
+                  Add Your First Card
+                </Button>
+              </Card>
+            ) : viewMode === 'grid' ? (
+              /* GRID VIEW: 3D Physical Cards */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6 pt-2">
+                {sortedCards.map((card) => (
+                  <CreditCardItem
+                    key={card.id}
+                    card={card}
+                    onEdit={handleEditCard}
+                    onDelete={handleDeleteCard}
+                    onAddExpense={handleQuickExpenseFromCard}
+                  />
+                ))}
+              </div>
+            ) : viewMode === 'circles' ? (
+              /* CIRCLES VIEW */
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 justify-items-center pt-2">
+                {sortedCards.map((card, index) => (
+                  <CardCircle
+                    key={card.id}
+                    card={card}
+                    onClick={handleCardClick}
+                    index={index}
+                  />
+                ))}
+              </div>
+            ) : (
+              /* CAROUSEL DECK VIEW */
+              <div className="relative pt-2">
+                <Carousel 
+                  opts={{
+                    align: "center",
+                    loop: false,
+                  }}
+                  orientation="vertical"
+                  className="w-full max-w-xl mx-auto"
+                >
+                  <CarouselContent className="-mt-4 h-[620px]">
+                    {sortedCards.map((card, index) => (
+                      <CarouselItem key={card.id} className="pt-4">
+                        <div className="p-1 animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
+                          <div className="mb-3 text-center">
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs">
+                              Card {index + 1} of {cards.length}
+                            </span>
+                          </div>
+                          <CreditCardItem
+                            card={card}
+                            onEdit={handleEditCard}
+                            onDelete={handleDeleteCard}
+                            onAddExpense={handleQuickExpenseFromCard}
+                          />
+                          {card.currentBill > 0 && (
+                            <Button
+                              onClick={() => handleSendWhatsAppReminder(card)}
+                              variant="outline"
+                              size="sm"
+                              className="w-full mt-2 rounded-xl border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                            >
+                              <MessageCircle className="w-4 h-4 mr-2" />
+                              Send WhatsApp Reminder
+                            </Button>
+                          )}
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious className="top-0" />
+                  <CarouselNext className="bottom-0" />
+                </Carousel>
+              </div>
             )}
           </TabsContent>
 
