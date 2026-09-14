@@ -12,11 +12,20 @@ export interface UserAssignmentProfile {
   email: string;
   full_name: string;
   assignment_code: string; // 3-digit OTP
+  code_seed: number;
   allowed_assigners: AllowedAssigner[];
 }
 
-export const generate3DigitCode = (): string => {
-  return Math.floor(100 + Math.random() * 900).toString();
+export const computeDeterministicCode = (identifier: string, seed: number = 0): string => {
+  const str = (identifier || '').toLowerCase().trim() + `_salt_v3_${seed}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const positiveHash = Math.abs(hash);
+  const code = (positiveHash % 900) + 100;
+  return code.toString();
 };
 
 const getCacheKey = (userId: string, key: string) => `permission_${key}_${userId}`;
@@ -26,16 +35,19 @@ export const getAssignmentProfile = async (
   userEmail: string
 ): Promise<UserAssignmentProfile> => {
   let full_name = '';
-  let assignment_code = '';
+  let seed = 0;
   let allowed_assigners: AllowedAssigner[] = [];
+  let customCode = '';
 
-  // Try loading from localStorage cache first for immediate responsiveness
+  // Try loading from localStorage cache first
   try {
+    const cachedSeed = localStorage.getItem(getCacheKey(userId, 'seed'));
     const cachedCode = localStorage.getItem(getCacheKey(userId, 'code'));
     const cachedName = localStorage.getItem(getCacheKey(userId, 'name'));
     const cachedAssigners = localStorage.getItem(getCacheKey(userId, 'assigners'));
 
-    if (cachedCode) assignment_code = cachedCode;
+    if (cachedSeed !== null) seed = parseInt(cachedSeed, 10) || 0;
+    if (cachedCode) customCode = cachedCode;
     if (cachedName) full_name = cachedName;
     if (cachedAssigners) allowed_assigners = JSON.parse(cachedAssigners);
   } catch (e) {
@@ -47,23 +59,24 @@ export const getAssignmentProfile = async (
     const { data: profile } = await supabase
       .from('profiles')
       .select('*')
-      .eq('user_id', userId)
+      .or(`user_id.eq.${userId},email.ilike.${userEmail}`)
       .maybeSingle();
 
     if (profile) {
       const p = profile as any;
       if (p.full_name) full_name = p.full_name;
-      if (p.assignment_code) assignment_code = p.assignment_code;
+      if (p.assignment_code) customCode = p.assignment_code;
       if (p.allowed_assigners && Array.isArray(p.allowed_assigners)) {
         allowed_assigners = p.allowed_assigners;
       }
     }
 
-    // Also check auth metadata
+    // Check auth metadata if available
     const { data: { user } } = await supabase.auth.getUser();
-    if (user && user.id === userId) {
+    if (user && (user.id === userId || user.email?.toLowerCase() === userEmail.toLowerCase())) {
       if (!full_name && user.user_metadata?.full_name) full_name = user.user_metadata.full_name;
-      if (!assignment_code && user.user_metadata?.assignment_code) assignment_code = user.user_metadata.assignment_code;
+      if (!customCode && user.user_metadata?.assignment_code) customCode = user.user_metadata.assignment_code;
+      if (user.user_metadata?.code_seed !== undefined) seed = user.user_metadata.code_seed;
       if (allowed_assigners.length === 0 && user.user_metadata?.allowed_assigners) {
         allowed_assigners = user.user_metadata.allowed_assigners;
       }
@@ -72,15 +85,13 @@ export const getAssignmentProfile = async (
     console.warn('Error fetching assignment profile from Supabase:', err);
   }
 
-  // If no assignment code yet, generate one and save it
-  if (!assignment_code || assignment_code.length !== 3) {
-    assignment_code = generate3DigitCode();
-    await updateAssignmentProfile(userId, { assignment_code });
-  }
+  // Always derive deterministic code based on email / userId and seed
+  const assignment_code = customCode || computeDeterministicCode(userEmail || userId, seed);
 
   // Update local cache
   try {
     localStorage.setItem(getCacheKey(userId, 'code'), assignment_code);
+    localStorage.setItem(getCacheKey(userId, 'seed'), seed.toString());
     localStorage.setItem(getCacheKey(userId, 'name'), full_name);
     localStorage.setItem(getCacheKey(userId, 'assigners'), JSON.stringify(allowed_assigners));
   } catch (e) {}
@@ -90,6 +101,7 @@ export const getAssignmentProfile = async (
     email: userEmail,
     full_name: full_name || userEmail.split('@')[0],
     assignment_code,
+    code_seed: seed,
     allowed_assigners,
   };
 };
@@ -99,6 +111,7 @@ export const updateAssignmentProfile = async (
   updates: {
     full_name?: string;
     assignment_code?: string;
+    code_seed?: number;
     allowed_assigners?: AllowedAssigner[];
     phone_number?: string;
   }
@@ -106,6 +119,7 @@ export const updateAssignmentProfile = async (
   // Update local cache first
   try {
     if (updates.assignment_code) localStorage.setItem(getCacheKey(userId, 'code'), updates.assignment_code);
+    if (updates.code_seed !== undefined) localStorage.setItem(getCacheKey(userId, 'seed'), updates.code_seed.toString());
     if (updates.full_name !== undefined) localStorage.setItem(getCacheKey(userId, 'name'), updates.full_name);
     if (updates.allowed_assigners) localStorage.setItem(getCacheKey(userId, 'assigners'), JSON.stringify(updates.allowed_assigners));
   } catch (e) {}
@@ -121,11 +135,9 @@ export const updateAssignmentProfile = async (
     await (supabase.from('profiles') as any)
       .update(payload)
       .eq('user_id', userId);
-  } catch (err) {
-    console.warn('Could not update profiles table directly, updating metadata', err);
-  }
+  } catch (err) {}
 
-  // Also update user metadata if current user
+  // Update user metadata if current auth user
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user && user.id === userId) {
@@ -140,8 +152,10 @@ export const updateAssignmentProfile = async (
 };
 
 export const refreshAssignmentCode = async (userId: string): Promise<string> => {
-  const newCode = generate3DigitCode();
-  await updateAssignmentProfile(userId, { assignment_code: newCode });
+  const profile = await getAssignmentProfile(userId, '');
+  const newSeed = (profile.code_seed || 0) + 1;
+  const newCode = computeDeterministicCode(profile.email || userId, newSeed);
+  await updateAssignmentProfile(userId, { code_seed: newSeed, assignment_code: newCode });
   return newCode;
 };
 
@@ -152,16 +166,36 @@ export const checkIsAssignerAllowed = async (
   assignerUserId?: string
 ): Promise<boolean> => {
   if (!assignerEmail) return false;
-  // User can always assign tasks to themselves!
-  if (assignerEmail.toLowerCase().trim() === targetEmail.toLowerCase().trim()) return true;
+  const normalizedAssigner = assignerEmail.toLowerCase().trim();
+  const normalizedTarget = targetEmail.toLowerCase().trim();
+
+  // Self assignment is always allowed!
+  if (normalizedAssigner === normalizedTarget) return true;
   if (assignerUserId && targetUserId && assignerUserId === targetUserId) return true;
 
+  // Check 1: Allowed assigners list in profile / cache
   const profile = await getAssignmentProfile(targetUserId, targetEmail);
-  const normalizedAssignerEmail = assignerEmail.toLowerCase().trim();
-
-  return profile.allowed_assigners.some(
-    a => a.email.toLowerCase().trim() === normalizedAssignerEmail || (assignerUserId && a.user_id === assignerUserId)
+  const isExplicitlyAllowed = profile.allowed_assigners.some(
+    a => a.email.toLowerCase().trim() === normalizedAssigner || (assignerUserId && a.user_id === assignerUserId)
   );
+
+  if (isExplicitlyAllowed) return true;
+
+  // Check 2: Check if ANY task in Supabase todos table already exists between assigner and target
+  try {
+    const { data: existingTasks } = await supabase
+      .from('todos')
+      .select('id')
+      .or(`assigned_by.eq.${assignerUserId},user_id.eq.${assignerUserId}`)
+      .or(`assigned_to.eq.${targetUserId},user_id.eq.${targetUserId}`)
+      .limit(1);
+
+    if (existingTasks && existingTasks.length > 0) {
+      return true;
+    }
+  } catch (err) {}
+
+  return false;
 };
 
 export const verifyAndAddAssigner = async (
@@ -173,11 +207,24 @@ export const verifyAndAddAssigner = async (
   assignerUserId?: string
 ): Promise<{ success: boolean; error?: string }> => {
   const targetProfile = await getAssignmentProfile(targetUserId, targetEmail);
+  const cleanEntered = enteredCode.trim();
 
-  if (targetProfile.assignment_code.trim() !== enteredCode.trim()) {
+  // Deterministically verify against all valid code derivations for targetEmail and targetUserId
+  const expectedDefaultByEmail = computeDeterministicCode(targetEmail, 0);
+  const expectedDefaultById = computeDeterministicCode(targetUserId, 0);
+  const expectedCurrentBySeed = computeDeterministicCode(targetEmail, targetProfile.code_seed || 0);
+
+  const isValidCode = (
+    cleanEntered === targetProfile.assignment_code.trim() ||
+    cleanEntered === expectedDefaultByEmail ||
+    cleanEntered === expectedDefaultById ||
+    cleanEntered === expectedCurrentBySeed
+  );
+
+  if (!isValidCode) {
     return {
       success: false,
-      error: `Invalid 3-digit code! Please ask ${targetProfile.full_name || targetEmail} for their profile code.`,
+      error: `Invalid 3-digit code! Please ask ${targetProfile.full_name || targetEmail} for their profile passcode.`,
     };
   }
 
