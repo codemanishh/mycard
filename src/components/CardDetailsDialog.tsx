@@ -82,7 +82,9 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>
               {hasOverdue 
-                ? `🚨 OVERDUE BILL! Unpaid balance of ₹${status.overdueAmount.toLocaleString('en-IN')} from previous cycle.` 
+                ? status.overdueDays === 0
+                  ? `⚠️ BILL DUE TODAY! Statement bill of ₹${status.overdueAmount.toLocaleString('en-IN')} is due today.`
+                  : `🚨 OVERDUE BILL! Payment was due on ${card.billingDate}${getOrdinalSuffix(card.billingDate)} of month (${status.overdueDays} day${status.overdueDays > 1 ? 's' : ''} ago). Please pay to avoid penalties.` 
                 : status.daysLeft === 0 
                   ? '⚠️ Bill is due today! Please complete payment.' 
                   : status.daysLeft <= 5 
@@ -99,10 +101,10 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
                   variant="outline" 
                   size="sm"
                   onClick={() => onClearOverdue(card)}
-                  className="flex-1 rounded-xl border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-bold text-xs h-9"
+                  className="flex-1 rounded-xl border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-extrabold text-xs h-9"
                 >
                   <Sparkles className="w-3.5 h-3.5 mr-1 text-red-500" />
-                  Mark Overdue Paid (₹{status.overdueAmount.toLocaleString('en-IN')})
+                  Mark Due Paid (₹{status.overdueAmount.toLocaleString('en-IN')})
                 </Button>
               )}
               {status.totalDue > 0 && onClearTotalBill && (
@@ -124,9 +126,9 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
             {/* Overdue Box if present */}
             {hasOverdue && (
               <div className="p-3 bg-red-500/10 dark:bg-red-950/30 rounded-2xl border border-red-500/30 space-y-1">
-                <div className="flex items-center gap-1 text-red-500 text-[11px] font-bold uppercase">
+                <div className="flex items-center gap-1 text-red-600 dark:text-red-400 text-[11px] font-bold uppercase">
                   <AlertCircle className="w-3 h-3" />
-                  <span>Overdue</span>
+                  <span>{status.overdueDays === 0 ? "Due Today" : "Overdue"}</span>
                 </div>
                 <p className="text-base sm:text-lg font-extrabold font-mono text-red-600 dark:text-red-400">
                   ₹{status.overdueAmount.toLocaleString('en-IN')}
@@ -136,7 +138,7 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
 
             <div className="p-3 bg-muted/40 rounded-2xl border border-border/40 space-y-1">
               <div className="flex items-center gap-1 text-muted-foreground text-[11px] font-medium">
-                <IndianRupee className="w-3 h-3 text-amber-500" />
+                <IndianRupee className="w-3 h-3 text-emerald-500" />
                 <span>{hasOverdue && status.currentAmount > 0 ? "Current Month" : "Current Bill"}</span>
               </div>
               <p className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
