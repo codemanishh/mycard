@@ -27,6 +27,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
     cardName: string;
     billingDate: number;
     currentBill: number;
+    overdueAmount: number;
     status: 'active' | 'blocked' | 'inactive';
     limitType: 'monthly' | 'per-transaction' | 'full-card';
     limitAmount: number;
@@ -38,6 +39,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
     cardName: '',
     billingDate: 1,
     currentBill: 0,
+    overdueAmount: 0,
     status: 'active',
     limitType: 'monthly',
     limitAmount: 0,
@@ -53,6 +55,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         cardName: editCard.cardName,
         billingDate: editCard.billingDate,
         currentBill: editCard.currentBill,
+        overdueAmount: editCard.overdueAmount || 0,
         status: editCard.status,
         limitType: editCard.limitType,
         limitAmount: editCard.limitAmount,
@@ -66,6 +69,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         cardName: '',
         billingDate: 1,
         currentBill: 0,
+        overdueAmount: 0,
         status: 'active',
         limitType: 'monthly',
         limitAmount: 0,
@@ -225,18 +229,35 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="currentBill">Current Bill (₹)</Label>
-            <Input
-              id="currentBill"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              value={formData.currentBill}
-              onChange={(e) => setFormData({ ...formData, currentBill: parseFloat(e.target.value) || 0 })}
-              className="rounded-xl"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="currentBill" className="text-xs font-medium">Current Month Bill (₹)</Label>
+              <Input
+                id="currentBill"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={formData.currentBill}
+                onChange={(e) => setFormData({ ...formData, currentBill: parseFloat(e.target.value) || 0 })}
+                className="rounded-xl font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="overdueAmount" className="text-xs font-medium text-red-500 flex items-center gap-1">
+                <span>Overdue Bill (₹)</span>
+              </Label>
+              <Input
+                id="overdueAmount"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={formData.overdueAmount}
+                onChange={(e) => setFormData({ ...formData, overdueAmount: parseFloat(e.target.value) || 0 })}
+                className="rounded-xl font-mono text-xs text-red-500 border-red-500/30 focus:border-red-500"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

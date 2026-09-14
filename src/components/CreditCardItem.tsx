@@ -1,4 +1,4 @@
-import { CreditCard as CreditCardType } from '@/types/creditCard';
+import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
 import { CreditCardVisual } from '@/components/CreditCardVisual';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,28 +13,12 @@ interface CreditCardItemProps {
 }
 
 export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense }: CreditCardItemProps) => {
-  const getBillingDaysLeft = () => {
-    const today = new Date();
-    const currentDay = today.getDate();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    
-    let nextBillingDate = new Date(currentYear, currentMonth, card.billingDate);
-    if (currentDay >= card.billingDate) {
-      nextBillingDate = new Date(currentYear, currentMonth + 1, card.billingDate);
-    }
-    
-    const diffTime = nextBillingDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
+  const status = getCardBillStatus(card);
 
-  const daysLeft = getBillingDaysLeft();
-  const isAlert = card.currentBill > 0 && daysLeft <= 5;
-  const isDueToday = card.currentBill > 0 && daysLeft === 0;
-
-  const availableCredit = Math.max(0, card.limitAmount - card.currentBill);
+  const hasOverdue = status.isOverdue && status.overdueAmount > 0;
+  const availableCredit = Math.max(0, card.limitAmount - status.totalDue);
   const utilizationPercent = card.limitAmount > 0 
-    ? Math.min(100, Math.round((card.currentBill / card.limitAmount) * 100))
+    ? Math.min(100, Math.round((status.totalDue / card.limitAmount) * 100))
     : 0;
 
   return (
@@ -51,19 +35,23 @@ export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense }: CreditC
         {/* Billing Status Message */}
         <div className={cn(
           "flex items-center gap-2 p-2.5 rounded-xl text-xs font-semibold transition-colors",
-          isDueToday 
-            ? "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30"
-            : isAlert 
-              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" 
-              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+          hasOverdue 
+            ? "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/40 animate-pulse"
+            : status.daysLeft === 0
+              ? "bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30"
+              : status.daysLeft <= 5 
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" 
+                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
         )}>
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>
-            {isDueToday 
-              ? "⚠️ Bill Due Today! Please make payment soon." 
-              : isAlert 
-                ? `⚠️ Bill due in ${daysLeft} days!` 
-                : `🟢 Next billing in ${daysLeft} days (${card.billingDate}${getOrdinalSuffix(card.billingDate)} of month)`
+            {hasOverdue 
+              ? `🚨 OVERDUE! Payment was due ${status.overdueDays} day${status.overdueDays > 1 ? 's' : ''} ago.`
+              : status.daysLeft === 0 
+                ? "⚠️ Bill Due Today! Please make payment soon." 
+                : status.daysLeft <= 5 
+                  ? `⚠️ Bill due in ${status.daysLeft} days!` 
+                  : `🟢 Next billing in ${status.daysLeft} days (${card.billingDate}${getOrdinalSuffix(card.billingDate)} of month)`
             }
           </span>
         </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard as CreditCardType } from '@/types/creditCard';
+import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
 import { BankAccount, Expense, Lending } from '@/types/expense';
 import { CreditCardItem } from '@/components/CreditCardItem';
 import { CardCircle } from '@/components/CardCircle';
@@ -186,6 +186,7 @@ const Index = () => {
           bankName: card.bank_name,
           billingDate: card.billing_date,
           currentBill: Number(card.current_bill) || 0,
+          overdueAmount: Number((card as any).overdue_amount) || Number((card as any).overdueAmount) || 0,
           limitAmount: Number(card.limit_amount) || 0,
           limitType: card.limit_type as CreditCardType['limitType'],
           status: card.status as CreditCardType['status'],
@@ -732,7 +733,7 @@ const Index = () => {
     });
   };
 
-  const totalBill = cards.reduce((sum, card) => sum + card.currentBill, 0);
+  const totalBill = cards.reduce((sum, card) => sum + getCardBillStatus(card).totalDue, 0);
   const totalLimit = cards.reduce((sum, card) => sum + card.limitAmount, 0);
   const usedLimit = totalBill;
   const utilizationPercent = totalLimit > 0 ? Math.round((usedLimit / totalLimit) * 100) : 0;
