@@ -100,34 +100,27 @@ const daysUntilDue = (dateString?: string): number | null => {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 };
 
-// Utility function to sort todos with priority and date-based logic
-const sortTodosByPriorityAndDate = (todosToSort: Todo[]): Todo[] => {
+// Utility function to sort todos primarily by due date
+const sortTodosByDueDate = (todosToSort: Todo[]): Todo[] => {
   const priorityOrder = { high: 0, medium: 1, low: 2 };
   
   return [...todosToSort].sort((a, b) => {
-    // First, separate by priority
+    const aDays = daysUntilDue(a.due_date);
+    const bDays = daysUntilDue(b.due_date);
+
+    // 1. Primary sort: Due Date (nearest due date first; overdue/today at top)
+    if (aDays !== null && bDays !== null) {
+      if (aDays !== bDays) return aDays - bDays;
+    }
+    // Tasks with a due date come before tasks without a due date
+    if (aDays !== null && bDays === null) return -1;
+    if (aDays === null && bDays !== null) return 1;
+
+    // 2. Secondary sort: Priority
     const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
     if (priorityDiff !== 0) return priorityDiff;
 
-    // Within same priority, prioritize by date
-    const aDays = daysUntilDue(a.expected_completion_date || a.due_date);
-    const bDays = daysUntilDue(b.expected_completion_date || b.due_date);
-
-    // Tasks with completion date today come first
-    const aIsToday = isToday(a.expected_completion_date || a.due_date);
-    const bIsToday = isToday(b.expected_completion_date || b.due_date);
-
-    if (aIsToday && !bIsToday) return -1;
-    if (!aIsToday && bIsToday) return 1;
-
-    // Then sort by nearest deadline
-    if (aDays !== null && bDays !== null) {
-      return aDays - bDays;
-    }
-    if (aDays !== null) return -1;
-    if (bDays !== null) return 1;
-
-    // Finally, sort by creation date
+    // 3. Tertiary sort: Creation date (newest first)
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 };
@@ -148,8 +141,9 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [showCompleted, setShowCompleted] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'assigned_to_me' | 'assigned_by_me' | 'deleted'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'assigned_to_me' | 'assigned_by_me' | 'completed' | 'deleted'>('all');
+  const [completedFilter, setCompletedFilter] = useState<'all' | 'own' | 'assigned'>('all');
+  const [deletedFilter, setDeletedFilter] = useState<'all' | 'own' | 'assigned'>('all');
   
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -179,7 +173,20 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
   const [detectedTasks, setDetectedTasks] = useState<SuggestedTask[]>([]);
 
   useEffect(() => {
-    if (user) fetchTodos();
+    if (!user) return;
+    fetchTodos();
+
+    // Subscribe to real-time changes on todos table
+    const channel = supabase
+      .channel('public:todos-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, () => {
+        fetchTodos();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const runAutoDetection = async (currentTodos: Todo[]) => {
@@ -258,14 +265,14 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           due_date: data.due_date || undefined,
           subtasks: [],
         };
-        setTodos(prev => sortTodosByPriorityAndDate([addedTodo as any, ...prev]));
+        setTodos(prev => sortTodosByDueDate([addedTodo as any, ...prev]));
         toast({ title: 'Task Added', description: task.title });
       }
     } else {
       const tempId = `offline-todo-${Date.now()}`;
       await queueMutation('supabase', { op: 'insert', table: 'todos', data: newTodoData });
       const newTodo = { id: tempId, ...newTodoData, created_at: new Date().toISOString(), subtasks: [] } as any;
-      setTodos(prev => sortTodosByPriorityAndDate([newTodo, ...prev]));
+      setTodos(prev => sortTodosByDueDate([newTodo, ...prev]));
       toast({ title: 'Task Added (offline)', description: task.title });
     }
 
@@ -347,10 +354,9 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         setTodos(mappedTodos);
       }
 
-      // Pre-fetch assignee profiles
-      // assigned_to stores auth user id (profiles.user_id). Pre-fetch those profiles.
-      const assigneeIds = [...new Set(mappedTodos.map(t => t.assigned_to).filter(Boolean))];
-      for (const id of assigneeIds) {
+      // Pre-fetch both assignee and assigner profiles so email/name badges work
+      const userIdsToFetch = [...new Set(mappedTodos.flatMap(t => [t.assigned_to, t.assigned_by]).filter(Boolean))];
+      for (const id of userIdsToFetch) {
         await getProfileById(id as string);
       }
 
@@ -470,14 +476,14 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
               ? { ...t, ...formData, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, category: formData.category || undefined }
               : t
           );
-          setTodos(sortTodosByPriorityAndDate(updatedTodos));
+          setTodos(sortTodosByDueDate(updatedTodos));
           toast({ title: 'Task Updated' });
         }
       } else {
         // offline: queue update and optimistically update
         await queueMutation('supabase', { op: 'update', table: 'todos', data: { title: formData.title, description: formData.description || null, due_date: formData.due_date || null, expected_completion_date: formData.expected_completion_date || null, assigned_to: formData.assigned_to || null, assigned_by: formData.assigned_to ? user.id : null, assignment_status: formData.assigned_to ? 'pending' : 'open', assigned_at: formData.assigned_to ? new Date().toISOString() : null, priority: formData.priority, category: formData.category || null, recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern, is_template: (formData as any).is_template }, match: { id: editingTodo.id } });
         const updatedTodos = todos.map(t => t.id === editingTodo.id ? { ...t, ...formData } : t);
-        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        setTodos(sortTodosByDueDate(updatedTodos));
         toast({ title: 'Task Updated (offline)' });
       }
     } else {
@@ -517,7 +523,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
             accepted_at: data.accepted_at || undefined,
             category: data.category || undefined,
           };
-          setTodos(sortTodosByPriorityAndDate([newTodo, ...todos]));
+          setTodos(sortTodosByDueDate([newTodo, ...todos]));
           toast({ title: 'Task Added' });
         }
       } else {
@@ -525,7 +531,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         const tempId = `offline-todo-${Date.now()}`;
         await queueMutation('supabase', { op: 'insert', table: 'todos', data: { user_id: user.id, title: formData.title, description: formData.description || null, due_date: formData.due_date || null, expected_completion_date: formData.expected_completion_date || null, priority: formData.priority, category: formData.category || null, recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern, is_template: (formData as any).is_template, assigned_to: (formData as any).assigned_to || null, assigned_by: (formData as any).assigned_to ? user.id : null, assignment_status: (formData as any).assigned_to ? 'pending' : 'open', assigned_at: (formData as any).assigned_to ? new Date().toISOString() : null } });
         const newTodo = { id: tempId, title: formData.title, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, priority: formData.priority, category: formData.category || undefined, is_deleted: false, is_completed: false, created_at: new Date().toISOString(), subtasks: [] } as any;
-        setTodos(sortTodosByPriorityAndDate([newTodo, ...todos]));
+        setTodos(sortTodosByDueDate([newTodo, ...todos]));
         toast({ title: 'Task Added (offline)' });
       }
     }
@@ -553,28 +559,41 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       const { error } = await supabase.from('todos').update(updates).eq('id', todo.id);
       if (!error) {
         const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, assignment_status: status } : t);
-        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        setTodos(sortTodosByDueDate(updatedTodos));
         toast({ title: `Assignment ${status}` });
       }
     } else {
       await queueMutation('supabase', { op: 'update', table: 'todos', data: updates, match: { id: todo.id } });
       const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, assignment_status: status } : t);
-      setTodos(sortTodosByPriorityAndDate(updatedTodos));
+      setTodos(sortTodosByDueDate(updatedTodos));
       toast({ title: `Assignment ${status} (offline)` });
     }
   };
 
   const toggleComplete = async (todo: Todo) => {
+    const newCompleted = !todo.is_completed;
+    const updates: any = { is_completed: newCompleted };
+    if (todo.assigned_to || todo.assigned_by) {
+      updates.assignment_status = newCompleted ? 'closed' : 'accepted';
+    }
+
     if (navigator.onLine) {
-      const { error } = await supabase.from('todos').update({ is_completed: !todo.is_completed }).eq('id', todo.id);
+      const { error } = await supabase.from('todos').update(updates).eq('id', todo.id);
       if (!error) {
-        const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, is_completed: !t.is_completed } : t);
-        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, ...updates } : t);
+        setTodos(sortTodosByDueDate(updatedTodos));
+        toast({
+          title: newCompleted ? 'Moved to Completed Tab' : 'Task Re-opened',
+          description: newCompleted ? `"${todo.title}" completed!` : `"${todo.title}" re-opened.`,
+        });
       }
     } else {
-      await queueMutation('supabase', { op: 'update', table: 'todos', data: { is_completed: !todo.is_completed }, match: { id: todo.id } });
-      const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, is_completed: !t.is_completed } : t);
-      setTodos(sortTodosByPriorityAndDate(updatedTodos));
+      await queueMutation('supabase', { op: 'update', table: 'todos', data: updates, match: { id: todo.id } });
+      const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, ...updates } : t);
+      setTodos(sortTodosByDueDate(updatedTodos));
+      toast({
+        title: newCompleted ? 'Moved to Completed Tab (offline)' : 'Task Re-opened (offline)',
+      });
     }
   };
 
@@ -584,13 +603,13 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       const { error } = await supabase.from('todos').update({ is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() }).eq('id', id);
       if (!error) {
         const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() } : t);
-        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        setTodos(sortTodosByDueDate(updatedTodos));
         toast({ title: 'Task Deleted' });
       }
     } else {
       await queueMutation('supabase', { op: 'update', table: 'todos', data: { is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() }, match: { id } });
       const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: true, deleted_by: user.id, deleted_at: new Date().toISOString() } : t);
-      setTodos(sortTodosByPriorityAndDate(updatedTodos));
+      setTodos(sortTodosByDueDate(updatedTodos));
       toast({ title: 'Task Deleted (offline)' });
     }
   };
@@ -600,13 +619,13 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       const { error } = await supabase.from('todos').update({ is_deleted: false, deleted_by: null, deleted_at: null }).eq('id', id);
       if (!error) {
         const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: false, deleted_by: undefined, deleted_at: undefined } : t);
-        setTodos(sortTodosByPriorityAndDate(updatedTodos));
+        setTodos(sortTodosByDueDate(updatedTodos));
         toast({ title: 'Task Restored' });
       }
     } else {
       await queueMutation('supabase', { op: 'update', table: 'todos', data: { is_deleted: false, deleted_by: null, deleted_at: null }, match: { id } });
       const updatedTodos = todos.map(t => t.id === id ? { ...t, is_deleted: false, deleted_by: undefined, deleted_at: undefined } : t);
-      setTodos(sortTodosByPriorityAndDate(updatedTodos));
+      setTodos(sortTodosByDueDate(updatedTodos));
       toast({ title: 'Task Restored (offline)' });
     }
   };
@@ -748,21 +767,59 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
     setFormData({ title: '', description: '', due_date: '', expected_completion_date: '', assignee_email: '', assigned_to: '', assignTo: false, priority: 'medium', category: '', recurrence_pattern: 'none', is_template: false });
   };
 
-  const filteredTodos = sortTodosByPriorityAndDate(
+  const filteredTodos = sortTodosByDueDate(
     todos.filter(todo => {
-      // Tabs filtering (deleted overrides others)
-      if (activeTab === 'deleted') {
-        return todo.is_deleted === true;
+      // 1. Search Query Filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchTitle = todo.title.toLowerCase().includes(query);
+        const matchDesc = todo.description && todo.description.toLowerCase().includes(query);
+        const matchAssignee = todo.assigned_to && profileCache[todo.assigned_to]?.email?.toLowerCase().includes(query);
+        const matchAssigner = todo.assigned_by && profileCache[todo.assigned_by]?.email?.toLowerCase().includes(query);
+        if (!matchTitle && !matchDesc && !matchAssignee && !matchAssigner) return false;
       }
-      if (todo.is_deleted === true) return false; // Hide deleted in other tabs
-      
-      if (!showCompleted && todo.is_completed) return false;
+
+      // 2. Category & Priority Filter
       if (filterCategory !== 'all' && todo.category !== filterCategory) return false;
       if (filterPriority !== 'all' && todo.priority !== filterPriority) return false;
-      if (searchQuery && !todo.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      // Tabs filtering
-      if (activeTab === 'assigned_to_me' && (!user || todo.assigned_to !== user.id)) return false;
-      if (activeTab === 'assigned_by_me' && (!user || todo.assigned_by !== user.id)) return false;
+
+      // 3. Tab Specific Filtering
+      if (activeTab === 'deleted') {
+        if (!todo.is_deleted) return false;
+        if (deletedFilter === 'own') {
+          return todo.user_id === user?.id && !todo.assigned_to;
+        }
+        if (deletedFilter === 'assigned') {
+          return todo.assigned_to === user?.id || (todo.assigned_by === user?.id && !!todo.assigned_to);
+        }
+        return true;
+      }
+
+      // Hide deleted tasks in all non-deleted tabs
+      if (todo.is_deleted) return false;
+
+      if (activeTab === 'completed') {
+        if (!todo.is_completed) return false;
+        if (completedFilter === 'own') {
+          return (todo.user_id === user?.id && !todo.assigned_to) || (todo.user_id === user?.id && todo.assigned_by === user?.id && !todo.assigned_to);
+        }
+        if (completedFilter === 'assigned') {
+          return todo.assigned_to === user?.id || (todo.assigned_by === user?.id && !!todo.assigned_to);
+        }
+        return true;
+      }
+
+      // Active tabs ('all', 'assigned_to_me', 'assigned_by_me'): hide completed tasks!
+      if (todo.is_completed) return false;
+
+      if (activeTab === 'assigned_to_me') {
+        return user && todo.assigned_to === user.id;
+      }
+      if (activeTab === 'assigned_by_me') {
+        return user && todo.assigned_by === user.id;
+      }
+
+      // Default 'all' tab: shows all active (uncompleted, non-deleted) tasks
       return true;
     })
   );
@@ -873,13 +930,64 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         {/* Tabs */}
         <div className="mb-3 sm:mb-4 overflow-x-auto">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-            <TabsList className="grid grid-cols-4 w-full">
-              <TabsTrigger value="all" className="text-xs sm:text-sm">All</TabsTrigger>
-              <TabsTrigger value="assigned_to_me" className="text-xs sm:text-sm truncate">For me <span className="hidden sm:inline ml-1 text-muted-foreground">{user ? todos.filter(t => t.assigned_to === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
-              <TabsTrigger value="assigned_by_me" className="text-xs sm:text-sm truncate">By me <span className="hidden sm:inline ml-1 text-muted-foreground">{user ? todos.filter(t => t.assigned_by === user.id && !t.is_deleted).length : 0}</span></TabsTrigger>
-              <TabsTrigger value="deleted" className="text-xs sm:text-sm">Del</TabsTrigger>
+            <TabsList className="grid grid-cols-5 w-full bg-card/80 backdrop-blur-lg border border-border/50 p-1 rounded-2xl">
+              <TabsTrigger value="all" className="text-xs sm:text-sm">
+                All <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({todos.filter(t => !t.is_completed && !t.is_deleted).length})</span>
+              </TabsTrigger>
+              <TabsTrigger value="assigned_to_me" className="text-xs sm:text-sm truncate">
+                For me <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({user ? todos.filter(t => t.assigned_to === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
+              </TabsTrigger>
+              <TabsTrigger value="assigned_by_me" className="text-xs sm:text-sm truncate">
+                By me <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({user ? todos.filter(t => t.assigned_by === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
+              </TabsTrigger>
+              <TabsTrigger value="completed" className="text-xs sm:text-sm truncate">
+                Done <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({todos.filter(t => t.is_completed && !t.is_deleted).length})</span>
+              </TabsTrigger>
+              <TabsTrigger value="deleted" className="text-xs sm:text-sm">
+                Del <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({todos.filter(t => t.is_deleted).length})</span>
+              </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          {/* Sub-filters for Completed & Deleted Tabs */}
+          {(activeTab === 'completed' || activeTab === 'deleted') && (
+            <div className="flex items-center gap-2 mt-3 bg-card/60 backdrop-blur-md p-1.5 rounded-xl border border-border/50 text-xs w-fit">
+              <span className="text-muted-foreground font-medium px-1">Filter:</span>
+              <button
+                onClick={() => activeTab === 'completed' ? setCompletedFilter('all') : setDeletedFilter('all')}
+                className={cn(
+                  "px-3 py-1 rounded-lg font-medium transition-all",
+                  (activeTab === 'completed' ? completedFilter === 'all' : deletedFilter === 'all')
+                    ? "bg-primary text-white shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                ALL
+              </button>
+              <button
+                onClick={() => activeTab === 'completed' ? setCompletedFilter('own') : setDeletedFilter('own')}
+                className={cn(
+                  "px-3 py-1 rounded-lg font-medium transition-all",
+                  (activeTab === 'completed' ? completedFilter === 'own' : deletedFilter === 'own')
+                    ? "bg-primary text-white shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                OWN
+              </button>
+              <button
+                onClick={() => activeTab === 'completed' ? setCompletedFilter('assigned') : setDeletedFilter('assigned')}
+                className={cn(
+                  "px-3 py-1 rounded-lg font-medium transition-all",
+                  (activeTab === 'completed' ? completedFilter === 'assigned' : deletedFilter === 'assigned')
+                    ? "bg-primary text-white shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                ASSIGNED
+              </button>
+            </div>
+          )}
         </div>
 
         {/* AI Insights & Suggestions */}
@@ -989,16 +1097,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
             </Select>
             </div>
           </div>
-          <div className="flex items-center gap-2 mt-2 sm:mt-3">
-            <Checkbox 
-              id="show-completed"
-              checked={showCompleted}
-              onCheckedChange={(c) => setShowCompleted(c as boolean)}
-            />
-            <label htmlFor="show-completed" className="text-xs sm:text-sm text-muted-foreground cursor-pointer">
-              Completed
-            </label>
-          </div>
+
         </Card>
 
         {/* Todo List */}
@@ -1126,31 +1225,29 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                         </Badge>
                       )}
                     </div>
-                    {/* Assignment status + actions */}
-                    {todo.assignment_status && (
-                      <div className="mt-2">
-                        <Badge variant="outline" className="text-xs">{todo.assignment_status}</Badge>
+                    {/* Assigner / Assignee info tag */}
+                    {(todo.assigned_to || todo.assigned_by) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {todo.assigned_to === user?.id && todo.assigned_by && (
+                          <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30 font-medium">
+                            👤 Assigned by: {profileCache[todo.assigned_by]?.email || profileCache[todo.assigned_by]?.full_name || 'User'}
+                          </Badge>
+                        )}
+                        {todo.assigned_by === user?.id && todo.assigned_to && (
+                          <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30 font-medium">
+                            👤 Assigned to: {profileCache[todo.assigned_to]?.email || profileCache[todo.assigned_to]?.full_name || 'User'}
+                          </Badge>
+                        )}
+                        {todo.assignment_status && (
+                          <Badge variant="secondary" className="text-xs capitalize">
+                            Status: {todo.assignment_status}
+                          </Badge>
+                        )}
                       </div>
                     )}
 
                     {todo.assigned_to && (
                       <div className="mt-2 space-y-2">
-                        <div className="flex items-center gap-2">
-                          {profileCache[todo.assigned_to] ? (
-                            <>
-                              <div className="w-6 h-6 rounded-full bg-muted-foreground/20 flex items-center justify-center text-xs font-medium overflow-hidden flex-shrink-0">
-                                {profileCache[todo.assigned_to].avatar_url ? (
-                                  <img src={profileCache[todo.assigned_to].avatar_url} alt="avatar" className="w-full h-full object-cover" />
-                                ) : (
-                                  <span>{profileCache[todo.assigned_to].full_name ? profileCache[todo.assigned_to].full_name.charAt(0) : '?'}</span>
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground line-clamp-1">Assigned to: <span className="font-medium">{profileCache[todo.assigned_to].full_name || profileCache[todo.assigned_to].email}</span></p>
-                            </>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">Assigned to: <span className="font-medium">{todo.assigned_to.slice(0, 8)}</span></p>
-                          )}
-                        </div>
                         <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                           {user && user.id === todo.assigned_to && todo.assignment_status === 'pending' && (
                             <>
@@ -1314,7 +1411,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
             </div>
 
             <div className="space-y-2">
-              <Label>Due Date</Label>
+              <Label>Due Date (Optional)</Label>
               <Input
                 type="date"
                 value={formData.due_date}
@@ -1323,49 +1420,41 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Expected Completion Date</Label>
-              <Input
-                type="date"
-                value={formData.expected_completion_date}
-                onChange={(e) => setFormData({ ...formData, expected_completion_date: e.target.value })}
-                className="rounded-xl h-10 text-sm"
-              />
-              <p className="text-xs text-muted-foreground">If set, this date will be prioritized for task ordering</p>
-            </div>
+            {/* Priority & Category in 2-column grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Priority</Label>
+                <Select 
+                  value={formData.priority} 
+                  onValueChange={(v) => setFormData({ ...formData, priority: v as 'low' | 'medium' | 'high' })}
+                >
+                  <SelectTrigger className="rounded-xl h-10 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">🟢 Low</SelectItem>
+                    <SelectItem value="medium">🟡 Medium</SelectItem>
+                    <SelectItem value="high">🔴 High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label>Priority</Label>
-              <Select 
-                value={formData.priority} 
-                onValueChange={(v) => setFormData({ ...formData, priority: v as 'low' | 'medium' | 'high' })}
-              >
-                <SelectTrigger className="rounded-xl h-10 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">🟢 Low</SelectItem>
-                  <SelectItem value="medium">🟡 Medium</SelectItem>
-                  <SelectItem value="high">🔴 High</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select 
-                value={formData.category} 
-                onValueChange={(v) => setFormData({ ...formData, category: v })}
-              >
-                <SelectTrigger className="rounded-xl h-10 text-sm">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select 
+                  value={formData.category} 
+                  onValueChange={(v) => setFormData({ ...formData, category: v })}
+                >
+                  <SelectTrigger className="rounded-xl h-10 text-sm">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1454,35 +1543,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label>Recurrence</Label>
-              <Select 
-                value={(formData as any).recurrence_pattern} 
-                onValueChange={(v) => setFormData({ ...formData, recurrence_pattern: v as any })}
-              >
-                <SelectTrigger className="rounded-xl h-10 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
-                  <SelectItem value="yearly">Yearly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Checkbox 
-                  id="is-template"
-                  checked={(formData as any).is_template}
-                  onCheckedChange={(c) => setFormData({ ...formData, is_template: c as boolean })}
-                />
-                <Label htmlFor="is-template" className="text-sm cursor-pointer">Save as template</Label>
-              </div>
-            </div>
 
             {editingTodo && (
               <div className="space-y-2">
