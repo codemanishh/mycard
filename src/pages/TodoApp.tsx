@@ -89,15 +89,32 @@ const isThisWeek = (dateString?: string): boolean => {
   return date >= today && date <= weekFromToday;
 };
 
-// Utility function to get days until due date
+// Utility function to get days until due date safely
 const daysUntilDue = (dateString?: string): number | null => {
   if (!dateString) return null;
-  const date = new Date(dateString);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  const diff = date.getTime() - today.getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    date.setHours(0, 0, 0, 0);
+    const diff = date.getTime() - today.getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  } catch {
+    return null;
+  }
+};
+
+// Safe date-fns formatter helper to prevent RangeError crashes on invalid date strings
+const safeFormatDueDate = (dateString?: string): string | null => {
+  if (!dateString) return null;
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return null;
+    return format(d, 'MMM d');
+  } catch {
+    return null;
+  }
 };
 
 // Utility function to sort todos primarily by due date
@@ -117,11 +134,17 @@ const sortTodosByDueDate = (todosToSort: Todo[]): Todo[] => {
     if (aDays === null && bDays !== null) return 1;
 
     // 2. Secondary sort: Priority
-    const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+    const aPri = priorityOrder[a.priority as 'high' | 'medium' | 'low'] ?? 1;
+    const bPri = priorityOrder[b.priority as 'high' | 'medium' | 'low'] ?? 1;
+    const priorityDiff = aPri - bPri;
     if (priorityDiff !== 0) return priorityDiff;
 
     // 3. Tertiary sort: Creation date (newest first)
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    const validA = isNaN(aTime) ? 0 : aTime;
+    const validB = isNaN(bTime) ? 0 : bTime;
+    return validB - validA;
   });
 };
 
@@ -927,27 +950,70 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
 
 
 
-        {/* Tabs */}
+        {/* Sub-Tabs inside To-Do */}
         <div className="mb-3 sm:mb-4 overflow-x-auto">
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-            <TabsList className="grid grid-cols-5 w-full bg-card/80 backdrop-blur-lg border border-border/50 p-1 rounded-2xl">
-              <TabsTrigger value="all" className="text-xs sm:text-sm">
-                All <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({todos.filter(t => !t.is_completed && !t.is_deleted).length})</span>
-              </TabsTrigger>
-              <TabsTrigger value="assigned_to_me" className="text-xs sm:text-sm truncate">
-                For me <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({user ? todos.filter(t => t.assigned_to === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
-              </TabsTrigger>
-              <TabsTrigger value="assigned_by_me" className="text-xs sm:text-sm truncate">
-                By me <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({user ? todos.filter(t => t.assigned_by === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
-              </TabsTrigger>
-              <TabsTrigger value="completed" className="text-xs sm:text-sm truncate">
-                Done <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({todos.filter(t => t.is_completed && !t.is_deleted).length})</span>
-              </TabsTrigger>
-              <TabsTrigger value="deleted" className="text-xs sm:text-sm">
-                Del <span className="hidden sm:inline ml-1 text-muted-foreground font-semibold">({todos.filter(t => t.is_deleted).length})</span>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="grid grid-cols-5 w-full bg-card/80 backdrop-blur-lg border border-border/50 p-1 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setActiveTab('all')}
+              className={cn(
+                "py-1.5 px-2 rounded-xl text-xs sm:text-sm font-medium transition-all text-center",
+                activeTab === 'all'
+                  ? "bg-primary text-white shadow-md font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              All <span className="hidden sm:inline ml-1 font-semibold">({todos.filter(t => !t.is_completed && !t.is_deleted).length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('assigned_to_me')}
+              className={cn(
+                "py-1.5 px-2 rounded-xl text-xs sm:text-sm font-medium transition-all text-center truncate",
+                activeTab === 'assigned_to_me'
+                  ? "bg-primary text-white shadow-md font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              For me <span className="hidden sm:inline ml-1 font-semibold">({user ? todos.filter(t => t.assigned_to === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('assigned_by_me')}
+              className={cn(
+                "py-1.5 px-2 rounded-xl text-xs sm:text-sm font-medium transition-all text-center truncate",
+                activeTab === 'assigned_by_me'
+                  ? "bg-primary text-white shadow-md font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              By me <span className="hidden sm:inline ml-1 font-semibold">({user ? todos.filter(t => t.assigned_by === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('completed')}
+              className={cn(
+                "py-1.5 px-2 rounded-xl text-xs sm:text-sm font-medium transition-all text-center truncate",
+                activeTab === 'completed'
+                  ? "bg-primary text-white shadow-md font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Done <span className="hidden sm:inline ml-1 font-semibold">({todos.filter(t => t.is_completed && !t.is_deleted).length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('deleted')}
+              className={cn(
+                "py-1.5 px-2 rounded-xl text-xs sm:text-sm font-medium transition-all text-center",
+                activeTab === 'deleted'
+                  ? "bg-primary text-white shadow-md font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Del <span className="hidden sm:inline ml-1 font-semibold">({todos.filter(t => t.is_deleted).length})</span>
+            </button>
+          </div>
 
           {/* Sub-filters for Completed & Deleted Tabs */}
           {(activeTab === 'completed' || activeTab === 'deleted') && (
@@ -1194,7 +1260,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                     </p>
                     
                     <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-2">
-                      <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[todo.priority]}`}>
+                      <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[todo.priority as 'low' | 'medium' | 'high'] || 'bg-muted text-muted-foreground'}`}>
                         <Flag className="w-3 h-3 mr-1" />
                         {todo.priority}
                       </Badge>
@@ -1206,10 +1272,10 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                         </Badge>
                       )}
                       
-                      {todo.due_date && (
+                      {safeFormatDueDate(todo.due_date) && (
                         <Badge variant="outline" className="text-xs">
                           <Calendar className="w-3 h-3 mr-1" />
-                          {format(new Date(todo.due_date), 'MMM d')}
+                          {safeFormatDueDate(todo.due_date)}
                         </Badge>
                       )}
 
