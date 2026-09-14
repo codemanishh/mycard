@@ -777,14 +777,6 @@ const Index = () => {
                 <Mic className="w-4 h-4 md:w-5 md:h-5" />
               </Button>
               <Button 
-                onClick={() => setMainTab('todo')}
-                size="icon"
-                className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm rounded-lg md:rounded-xl h-8 w-8 md:h-10 md:w-10 transition-all active:scale-95"
-                title="To-Do List"
-              >
-                <ListTodo className="w-3.5 h-3.5 md:w-4 md:h-4" />
-              </Button>
-              <Button 
                 onClick={() => setExpenseDialogOpen(true)}
                 size="icon"
                 className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm rounded-lg md:rounded-xl h-8 w-8 md:h-10 md:w-10 transition-all active:scale-95"
@@ -1034,22 +1026,6 @@ const Index = () => {
                     index={index}
                   />
                 ))}
-                {/* Add Card Quick Circle Button */}
-                <div 
-                  onClick={() => {
-                    setEditingCard(null);
-                    setDialogOpen(true);
-                  }}
-                  className="flex flex-col items-center gap-2 animate-fade-in cursor-pointer group"
-                >
-                  <div className="w-18 h-18 sm:w-20 sm:h-20 md:w-22 md:h-22 rounded-full border-2 border-dashed border-primary/50 group-hover:border-primary bg-primary/5 group-hover:bg-primary/10 transition-all flex flex-col items-center justify-center text-primary shadow-sm group-hover:scale-105 active:scale-95">
-                    <Plus className="w-6 h-6 md:w-7 md:h-7" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[11px] sm:text-xs font-bold text-primary">Add Card</p>
-                    <p className="text-[9px] text-muted-foreground">New credit card</p>
-                  </div>
-                </div>
               </div>
             ) : viewMode === 'grid' ? (
               /* GRID VIEW: 3D Physical Cards */
@@ -1061,18 +1037,6 @@ const Index = () => {
                     onEdit={handleEditCard}
                     onDelete={handleDeleteCard}
                     onAddExpense={handleQuickExpenseFromCard}
-                  />
-                ))}
-              </div>
-            ) : viewMode === 'circles' ? (
-              /* CIRCLES VIEW */
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 justify-items-center pt-2">
-                {sortedCards.map((card, index) => (
-                  <CardCircle
-                    key={card.id}
-                    card={card}
-                    onClick={handleCardClick}
-                    index={index}
                   />
                 ))}
               </div>
