@@ -18,9 +18,11 @@ interface CardDetailsDialogProps {
   onEdit: (card: CreditCardType) => void;
   onDelete: (id: string) => void;
   onAddExpense: (card: CreditCardType) => void;
+  onClearOverdue?: (card: CreditCardType) => void;
+  onClearTotalBill?: (card: CreditCardType) => void;
 }
 
-export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, onAddExpense }: CardDetailsDialogProps) => {
+export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, onAddExpense, onClearOverdue, onClearTotalBill }: CardDetailsDialogProps) => {
   if (!card) return null;
 
   const status = getCardBillStatus(card);
@@ -72,7 +74,7 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
           <div className={cn(
             "flex items-center gap-2.5 p-3 rounded-2xl text-xs font-semibold border",
             hasOverdue 
-              ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40 animate-pulse" 
+              ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40" 
               : status.daysLeft <= 5 
                 ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
                 : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
@@ -80,7 +82,7 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>
               {hasOverdue 
-                ? `🚨 OVERDUE BILL! Payment was due on ${card.billingDate}${getOrdinalSuffix(card.billingDate)} of month (${status.overdueDays} day${status.overdueDays > 1 ? 's' : ''} ago). Please pay to avoid penalties.` 
+                ? `🚨 OVERDUE BILL! Unpaid balance of ₹${status.overdueAmount.toLocaleString('en-IN')} from previous cycle.` 
                 : status.daysLeft === 0 
                   ? '⚠️ Bill is due today! Please complete payment.' 
                   : status.daysLeft <= 5 
@@ -88,6 +90,34 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
                     : `🟢 Next bill cycle closes in ${status.daysLeft} days (${card.billingDate}${getOrdinalSuffix(card.billingDate)} of month)`}
             </span>
           </div>
+
+          {/* Quick Clear Bill Buttons */}
+          {(hasOverdue || status.totalDue > 0) && (
+            <div className="flex gap-2">
+              {hasOverdue && onClearOverdue && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => onClearOverdue(card)}
+                  className="flex-1 rounded-xl border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-bold text-xs h-9"
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1 text-red-500" />
+                  Mark Overdue Paid (₹{status.overdueAmount.toLocaleString('en-IN')})
+                </Button>
+              )}
+              {status.totalDue > 0 && onClearTotalBill && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => onClearTotalBill(card)}
+                  className="flex-1 rounded-xl border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold text-xs h-9"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-500" />
+                  Mark All Bills Paid
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Key Financial Metrics: Overdue Amount, Current Bill & Total Due */}
           <div className={cn("grid gap-3", hasOverdue && status.currentAmount > 0 ? "grid-cols-3" : "grid-cols-2")}>

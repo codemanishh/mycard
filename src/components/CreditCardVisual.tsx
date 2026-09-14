@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { CreditCard as CreditCardType } from '@/types/creditCard';
+import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { Badge } from '@/components/ui/badge';
 import { Wifi, AlertTriangle, CheckCircle2, Eye, EyeOff, Copy, Check } from 'lucide-react';
@@ -60,30 +59,13 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className 
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  const getBillingDaysLeft = () => {
-    const today = new Date();
-    const currentDay = today.getDate();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    
-    let nextBillingDate = new Date(currentYear, currentMonth, card.billingDate);
-    if (currentDay >= card.billingDate) {
-      nextBillingDate = new Date(currentYear, currentMonth + 1, card.billingDate);
-    }
-    
-    const diffTime = nextBillingDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
-  const daysLeft = getBillingDaysLeft();
-  const isAlert = card.currentBill > 0 && daysLeft <= 5;
-  const isUrgent = card.currentBill > 0 && daysLeft <= 2;
+  const status = getCardBillStatus(card);
   const bankColor = getBankColor(card.bankName);
   const gradientClass = getBankGradient(card.bankName, bankColor);
 
-  const availableCredit = Math.max(0, card.limitAmount - card.currentBill);
+  const availableCredit = Math.max(0, card.limitAmount - status.totalDue);
   const utilizationPercent = card.limitAmount > 0 
-    ? Math.min(100, Math.round((card.currentBill / card.limitAmount) * 100))
+    ? Math.min(100, Math.round((status.totalDue / card.limitAmount) * 100))
     : 0;
 
   // Format real or dummy card number
@@ -130,28 +112,28 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className 
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Days Left Badge */}
+          {/* Status Badge */}
           <Badge 
             className={cn(
               "text-[10px] md:text-xs px-2.5 py-1 font-bold rounded-full border shadow-md backdrop-blur-md transition-all",
-              isUrgent 
+              status.isOverdue 
                 ? "bg-red-600 text-white border-red-400 animate-pulse" 
-                : isAlert 
+                : status.daysLeft <= 5 
                   ? "bg-amber-500 text-white border-amber-300"
                   : "bg-emerald-500/90 text-white border-emerald-300"
             )}
           >
-            {isUrgent ? (
+            {status.isOverdue ? (
               <span className="flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> Due in {daysLeft}d!
+                <AlertTriangle className="w-3 h-3" /> OVERDUE
               </span>
-            ) : isAlert ? (
+            ) : status.daysLeft <= 5 ? (
               <span className="flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> {daysLeft}d left
+                <AlertTriangle className="w-3 h-3" /> {status.statusLabel}
               </span>
             ) : (
               <span className="flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> {daysLeft}d left
+                <CheckCircle2 className="w-3 h-3" /> {status.statusLabel}
               </span>
             )}
           </Badge>
@@ -223,12 +205,18 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className 
           {/* Bill & Limit Info */}
           <div className="flex items-end justify-between">
             <div>
-              <p className="text-[10px] md:text-xs uppercase tracking-wider font-semibold text-white/70">Current Bill</p>
+              <p className="text-[10px] md:text-xs uppercase tracking-wider font-semibold text-white/70">
+                {status.isOverdue && status.overdueAmount > 0 && status.currentAmount > 0 
+                  ? "Total Due (Overdue + Curr)" 
+                  : status.isOverdue && status.overdueAmount > 0 
+                    ? "Overdue Bill" 
+                    : "Current Bill"}
+              </p>
               <p className={cn(
                 "text-lg md:text-xl font-extrabold font-mono leading-tight",
-                card.currentBill > 0 ? "text-amber-300" : "text-emerald-300"
+                status.isOverdue && status.overdueAmount > 0 ? "text-red-300 font-bold" : status.currentAmount > 0 ? "text-amber-300" : "text-emerald-300"
               )}>
-                ₹{card.currentBill.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                ₹{status.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
             </div>
             

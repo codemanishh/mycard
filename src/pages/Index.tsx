@@ -357,11 +357,12 @@ const Index = () => {
           bank_name: cardData.bankName,
           billing_date: cardData.billingDate,
           current_bill: cardData.currentBill,
+          overdue_amount: cardData.overdueAmount || 0,
           limit_amount: cardData.limitAmount,
           limit_type: cardData.limitType,
           status: cardData.status,
           notes: cardData.notes,
-        })
+        } as any)
         .eq('id', editingCard.id);
 
       if (!error) {
@@ -377,11 +378,12 @@ const Index = () => {
           bank_name: cardData.bankName,
           billing_date: cardData.billingDate,
           current_bill: cardData.currentBill,
+          overdue_amount: cardData.overdueAmount || 0,
           limit_amount: cardData.limitAmount,
           limit_type: cardData.limitType,
           status: cardData.status,
           notes: cardData.notes,
-        })
+        } as any)
         .select()
         .single();
 
@@ -393,6 +395,40 @@ const Index = () => {
         };
         setCards([newCard, ...cards]);
       }
+    }
+  };
+
+  const handleClearOverdue = async (card: CreditCardType) => {
+    if (!user) return;
+    const { error } = await supabase
+      .from('credit_cards')
+      .update({ overdue_amount: 0 } as any)
+      .eq('id', card.id);
+
+    if (!error) {
+      setCards(cards.map(c => c.id === card.id ? { ...c, overdueAmount: 0 } : c));
+      setSelectedCard(prev => prev && prev.id === card.id ? { ...prev, overdueAmount: 0 } : prev);
+      toast({
+        title: 'Overdue Cleared! 🎉',
+        description: `Overdue bill for ${card.cardName} has been marked as paid.`,
+      });
+    }
+  };
+
+  const handleClearTotalBill = async (card: CreditCardType) => {
+    if (!user) return;
+    const { error } = await supabase
+      .from('credit_cards')
+      .update({ current_bill: 0, overdue_amount: 0 } as any)
+      .eq('id', card.id);
+
+    if (!error) {
+      setCards(cards.map(c => c.id === card.id ? { ...c, currentBill: 0, overdueAmount: 0 } : c));
+      setSelectedCard(prev => prev && prev.id === card.id ? { ...prev, currentBill: 0, overdueAmount: 0 } : prev);
+      toast({
+        title: 'Total Bill Cleared! 🎉',
+        description: `All bills for ${card.cardName} have been marked as paid.`,
+      });
     }
   };
 
@@ -1136,6 +1172,8 @@ const Index = () => {
         onEdit={handleEditCard}
         onDelete={handleDeleteCard}
         onAddExpense={handleQuickExpenseFromCard}
+        onClearOverdue={handleClearOverdue}
+        onClearTotalBill={handleClearTotalBill}
       />
 
       <AddCardDialog
