@@ -9,7 +9,7 @@ import { CreditCard } from '@/types/creditCard';
 import { useToast } from '@/hooks/use-toast';
 import { BankLogo } from './BankLogo';
 import { INDIAN_BANKS } from '@/lib/bankData';
-import { Search, Plus } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 interface AddCardDialogProps {
   open: boolean;
@@ -30,6 +30,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
     status: 'active' | 'blocked' | 'inactive';
     limitType: 'monthly' | 'per-transaction' | 'full-card';
     limitAmount: number;
+    cardNumber: string;
+    expiryDate: string;
     notes: string;
   }>({
     bankName: '',
@@ -39,6 +41,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
     status: 'active',
     limitType: 'monthly',
     limitAmount: 0,
+    cardNumber: '',
+    expiryDate: '',
     notes: '',
   });
 
@@ -52,6 +56,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         status: editCard.status,
         limitType: editCard.limitType,
         limitAmount: editCard.limitAmount,
+        cardNumber: editCard.cardNumber || '',
+        expiryDate: editCard.expiryDate || '',
         notes: editCard.notes || '',
       });
     } else {
@@ -63,6 +69,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         status: 'active',
         limitType: 'monthly',
         limitAmount: 0,
+        cardNumber: '',
+        expiryDate: '',
         notes: '',
       });
     }
@@ -98,7 +106,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto rounded-3xl">
         <DialogHeader>
           <DialogTitle>{editCard ? 'Edit Credit Card' : 'Add New Credit Card'}</DialogTitle>
           <DialogDescription>
@@ -111,7 +119,6 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
           <div className="space-y-2">
             <Label>Bank Name *</Label>
             
-            {/* Search and Filter */}
             <div className="space-y-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -139,7 +146,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             </div>
 
             {/* Bank List */}
-            <div className="max-h-40 overflow-y-auto space-y-1 border border-border/50 rounded-xl p-2">
+            <div className="max-h-36 overflow-y-auto space-y-1 border border-border/50 rounded-xl p-2">
               {filteredBanks.map((bank) => (
                 <button
                   key={bank.name}
@@ -161,7 +168,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             </div>
 
             {formData.bankName && (
-              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-lg">
+              <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-lg border border-primary/20">
                 <BankLogo bankName={formData.bankName} size="sm" />
                 <span className="text-sm font-medium">{formData.bankName}</span>
               </div>
@@ -172,11 +179,36 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             <Label htmlFor="cardName">Card Name *</Label>
             <Input
               id="cardName"
-              placeholder="e.g., Coral, Amazon Pay"
+              placeholder="e.g., Coral, Amazon Pay, Regalia"
               value={formData.cardName}
               onChange={(e) => setFormData({ ...formData, cardName: e.target.value })}
+              className="rounded-xl"
               required
             />
+          </div>
+
+          {/* Card Number & Expiry Date */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="cardNumber" className="text-xs">Card Number (Dummy/Real)</Label>
+              <Input
+                id="cardNumber"
+                placeholder="4532 8912 3456 7890"
+                value={formData.cardNumber}
+                onChange={(e) => setFormData({ ...formData, cardNumber: e.target.value })}
+                className="rounded-xl font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="expiryDate" className="text-xs">Expiry Date</Label>
+              <Input
+                id="expiryDate"
+                placeholder="08/28"
+                value={formData.expiryDate}
+                onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                className="rounded-xl font-mono text-xs"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -187,7 +219,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               min="1"
               max="31"
               value={formData.billingDate}
-              onChange={(e) => setFormData({ ...formData, billingDate: parseInt(e.target.value) })}
+              onChange={(e) => setFormData({ ...formData, billingDate: parseInt(e.target.value) || 1 })}
+              className="rounded-xl"
               required
             />
           </div>
@@ -202,41 +235,44 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               placeholder="0.00"
               value={formData.currentBill}
               onChange={(e) => setFormData({ ...formData, currentBill: parseFloat(e.target.value) || 0 })}
+              className="rounded-xl"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="status">Card Status</Label>
-            <Select 
-              value={formData.status} 
-              onValueChange={(value: any) => setFormData({ ...formData, status: value })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="blocked">Blocked</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="status">Card Status</Label>
+              <Select 
+                value={formData.status} 
+                onValueChange={(value: any) => setFormData({ ...formData, status: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover rounded-xl">
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="blocked">Blocked</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="limitType">Limit Type</Label>
-            <Select 
-              value={formData.limitType} 
-              onValueChange={(value: any) => setFormData({ ...formData, limitType: value })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover">
-                <SelectItem value="monthly">Monthly Limit</SelectItem>
-                <SelectItem value="per-transaction">Per Transaction</SelectItem>
-                <SelectItem value="full-card">Full Card Limit</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="space-y-2">
+              <Label htmlFor="limitType">Limit Type</Label>
+              <Select 
+                value={formData.limitType} 
+                onValueChange={(value: any) => setFormData({ ...formData, limitType: value })}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover rounded-xl">
+                  <SelectItem value="monthly">Monthly Limit</SelectItem>
+                  <SelectItem value="per-transaction">Per Transaction</SelectItem>
+                  <SelectItem value="full-card">Full Card Limit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -248,6 +284,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               placeholder="0"
               value={formData.limitAmount}
               onChange={(e) => setFormData({ ...formData, limitAmount: parseFloat(e.target.value) || 0 })}
+              className="rounded-xl"
             />
           </div>
 
@@ -258,15 +295,16 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               placeholder="Add any additional notes..."
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              rows={3}
+              rows={2}
+              className="rounded-xl"
             />
           </div>
 
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+          <div className="flex gap-3 pt-3">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1 rounded-xl">
               Cancel
             </Button>
-            <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90">
+            <Button type="submit" className="flex-1 rounded-xl bg-primary hover:bg-primary/90">
               {editCard ? 'Update Card' : 'Add Card'}
             </Button>
           </div>

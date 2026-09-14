@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { CreditCard as CreditCardType } from '@/types/creditCard';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { Badge } from '@/components/ui/badge';
-import { Wifi, AlertTriangle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Wifi, AlertTriangle, CheckCircle2, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 interface CreditCardVisualProps {
@@ -56,6 +57,8 @@ const getBankGradient = (bankName: string, color: string): string => {
 
 export const CreditCardVisual = ({ card, onClick, showDetails = true, className }: CreditCardVisualProps) => {
   const [showFullNumber, setShowFullNumber] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
 
   const getBillingDaysLeft = () => {
     const today = new Date();
@@ -83,10 +86,20 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className 
     ? Math.min(100, Math.round((card.currentBill / card.limitAmount) * 100))
     : 0;
 
-  // Masked card number
+  // Format real or dummy card number
+  const fullCardNumber = card.cardNumber?.trim() || `4532 8912 3409 ${((card.id.charCodeAt(0) || 4) * 1111).toString().slice(-4)}`;
   const maskedCardNumber = showFullNumber 
-    ? `4532 8912 3409 ${((card.id.charCodeAt(0) || 4) * 1111).toString().slice(-4)}`
-    : `•••• •••• •••• ${((card.id.charCodeAt(0) || 4) * 1111).toString().slice(-4)}`;
+    ? fullCardNumber 
+    : `•••• •••• •••• ${fullCardNumber.slice(-4)}`;
+
+  const handleCopyNumber = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const cleanNum = fullCardNumber.replace(/\s+/g, '');
+    navigator.clipboard.writeText(cleanNum);
+    setCopied(true);
+    toast({ title: 'Card Number Copied!', description: cleanNum });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div 
@@ -153,7 +166,7 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className 
       </div>
 
       {/* Card Middle: EMV Chip & Contactless Symbol */}
-      <div className="flex items-center justify-between relative z-10 mb-4 md:mb-5">
+      <div className="flex items-center justify-between relative z-10 mb-3 md:mb-4">
         {/* Realistic EMV Metallic Gold Chip */}
         <div className="w-11 h-8 md:w-12 md:h-9 rounded-md bg-gradient-to-br from-amber-200 via-amber-400 to-yellow-600 border border-amber-300/60 shadow-inner flex items-center justify-center relative overflow-hidden">
           <div className="absolute inset-[2px] border border-amber-900/30 rounded-[3px] grid grid-cols-2 gap-1 p-0.5 opacity-60">
@@ -170,22 +183,38 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className 
         </div>
       </div>
 
-      {/* Card Number Mask & Toggle */}
+      {/* Card Number Mask, Expiry & Copy Action */}
       <div className="flex items-center justify-between relative z-10 mb-4">
-        <p className="font-mono text-base md:text-lg font-bold tracking-widest text-white/95 drop-shadow-sm">
-          {maskedCardNumber}
-        </p>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowFullNumber(!showFullNumber);
-          }}
-          className="p-1 text-white/60 hover:text-white transition-colors rounded-lg hover:bg-white/10"
-          title={showFullNumber ? "Hide Card Number" : "Show Card Number"}
-        >
-          {showFullNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        </button>
+        <div>
+          <p className="font-mono text-base md:text-lg font-bold tracking-widest text-white/95 drop-shadow-sm">
+            {maskedCardNumber}
+          </p>
+          {card.expiryDate && (
+            <p className="text-[10px] text-white/70 font-mono mt-0.5">EXP: {card.expiryDate}</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleCopyNumber}
+            className="p-1.5 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/15"
+            title="Copy Card Number"
+          >
+            {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowFullNumber(!showFullNumber);
+            }}
+            className="p-1.5 text-white/70 hover:text-white transition-colors rounded-lg hover:bg-white/15"
+            title={showFullNumber ? "Hide Card Number" : "Show Card Number"}
+          >
+            {showFullNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
       {/* Card Footer Details */}

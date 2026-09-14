@@ -30,55 +30,46 @@ export const CardCircle = ({ card, onClick, index }: CardCircleProps) => {
   const isUrgent = card.currentBill > 0 && daysLeft <= 2;
   const bankColor = getBankColor(card.bankName);
 
-  const utilizationPercent = card.limitAmount > 0 
-    ? Math.min(100, Math.round((card.currentBill / card.limitAmount) * 100))
-    : 0;
+  // Clean card name display (stripping legacy raw prefixes like R_ if present)
+  const cleanCardTitle = card.cardName.replace(/^R_/, '').replace(/_/g, ' ');
 
   return (
     <div 
-      className="flex flex-col items-center gap-2 animate-fade-in group cursor-pointer" 
-      style={{ animationDelay: `${index * 0.05}s` }}
+      className="flex flex-col items-center gap-1.5 animate-fade-in group cursor-pointer" 
+      style={{ animationDelay: `${index * 0.04}s` }}
       onClick={() => onClick(card)}
     >
       <div className={cn(
-        "relative transition-all duration-300 transform group-hover:-translate-y-1.5 group-hover:scale-105 active:scale-95",
+        "relative transition-all duration-200 transform group-hover:-translate-y-1 group-hover:scale-105 active:scale-95",
         card.status === 'blocked' && "opacity-50 saturate-50"
       )}>
-        {/* Soft Ambient Halo Glow */}
+        {/* Soft Bank Accent Shadow */}
         <div 
-          className="absolute -inset-1.5 rounded-full blur-lg opacity-40 group-hover:opacity-90 transition-opacity duration-300"
+          className="absolute inset-0 rounded-full blur-md opacity-25 group-hover:opacity-60 transition-opacity"
           style={{ backgroundColor: bankColor }}
         />
-        
-        {/* Outer Circular Ring with Metallic Gradient Border */}
+
+        {/* Clean Circle Avatar */}
         <div
           className={cn(
-            "relative w-18 h-18 sm:w-20 sm:h-20 md:w-22 md:h-22 rounded-full flex flex-col items-center justify-center p-2.5",
-            "bg-gradient-to-br from-card via-card to-secondary/60 shadow-elevated transition-all duration-300 border-2",
+            "relative w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 rounded-full flex items-center justify-center p-2.5",
+            "bg-card border-2 shadow-sm transition-all overflow-hidden",
             isUrgent 
-              ? "border-red-500 ring-4 ring-red-500/30 animate-pulse" 
+              ? "border-red-500 ring-2 ring-red-500/30" 
               : isAlert 
-                ? "border-amber-500 ring-4 ring-amber-500/20" 
-                : "border-emerald-500/60 hover:border-emerald-500 ring-2 ring-emerald-500/10"
+                ? "border-amber-500 ring-2 ring-amber-500/20" 
+                : "border-border/60 hover:border-primary"
           )}
         >
-          {/* Bank Logo */}
-          <BankLogo bankName={card.bankName} size="md" className="shadow-md border border-white/20" />
-          
-          {/* Card Short Name */}
-          <span className="text-[10px] sm:text-[11px] font-extrabold text-foreground truncate max-w-full mt-1.5 tracking-tight text-center leading-none">
-            {card.cardName}
-          </span>
-
-          {/* Mini Gold Chip Indicator on the circle */}
-          <div className="absolute left-1 top-1/2 -translate-y-1/2 w-2 h-3 rounded-[2px] bg-gradient-to-br from-amber-200 to-yellow-600 border border-amber-300/40 opacity-70 hidden sm:block" />
+          {/* ONLY the crisp Bank Logo inside the circle */}
+          <BankLogo bankName={card.bankName} size="md" className="shadow-sm" />
         </div>
         
-        {/* Floating Countdown Badge */}
+        {/* Compact Floating Status Badge */}
         <span className={cn(
-          "absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 px-2 py-0.5 rounded-full flex items-center justify-center text-[10px] sm:text-[11px] font-extrabold shadow-lg z-10 border border-white/40 tracking-tight",
+          "absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full flex items-center justify-center text-[10px] font-extrabold shadow-md z-10 border border-white/50",
           isUrgent 
-            ? "bg-red-600 text-white animate-bounce" 
+            ? "bg-red-600 text-white" 
             : isAlert 
               ? "bg-amber-500 text-white" 
               : "bg-emerald-500 text-white"
@@ -91,28 +82,26 @@ export const CardCircle = ({ card, onClick, index }: CardCircleProps) => {
             `${daysLeft}d left`
           )}
         </span>
-
-        {/* Utilization Ring / Dot */}
-        {utilizationPercent > 0 && (
-          <span className={cn(
-            "absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.2 text-[9px] font-bold rounded-full border border-white/30 text-white shadow-sm",
-            utilizationPercent > 75 ? "bg-red-500" : "bg-slate-800/90"
-          )}>
-            {utilizationPercent}%
-          </span>
-        )}
       </div>
       
-      {/* Label & Bill Amount */}
-      <div className="text-center space-y-0.5 max-w-[90px] sm:max-w-[110px]">
-        <p className="text-[11px] sm:text-xs font-bold text-foreground leading-tight truncate">
+      {/* Labels below circle */}
+      <div className="text-center space-y-0.5 max-w-[95px] sm:max-w-[110px]">
+        {/* Line 1: Clean Card Name (Primary Title) */}
+        <p className="text-xs font-bold text-foreground leading-tight truncate title-case">
+          {cleanCardTitle}
+        </p>
+
+        {/* Line 2: Bank Name (Subtitle) */}
+        <p className="text-[10px] text-muted-foreground truncate leading-tight">
           {card.bankName}
         </p>
+
+        {/* Line 3: Current Bill Amount */}
         <p className={cn(
-          "text-[11px] sm:text-xs font-extrabold font-mono",
+          "text-[11px] font-bold font-mono leading-tight",
           card.currentBill > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
         )}>
-          ₹{card.currentBill > 0 ? card.currentBill.toLocaleString('en-IN') : '0.00'}
+          ₹{card.currentBill > 0 ? card.currentBill.toLocaleString('en-IN') : '0'}
         </p>
       </div>
     </div>

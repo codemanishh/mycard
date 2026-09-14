@@ -9,10 +9,12 @@ export interface CreditCard {
   limitAmount: number;
   notes?: string;
   logo?: string;
+  cardNumber?: string;
+  expiryDate?: string;
   createdAt: string;
 }
 
-// Bank logos are now handled by BankLogo component
+// Bank names list for reference
 export const BANK_NAMES = [
   'ICICI Bank',
   'HDFC Bank',

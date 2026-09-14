@@ -190,6 +190,8 @@ const Index = () => {
           limitType: card.limit_type as CreditCardType['limitType'],
           status: card.status as CreditCardType['status'],
           notes: card.notes || '',
+          cardNumber: (card as any).card_number || (card as any).cardNumber || '',
+          expiryDate: (card as any).expiry_date || (card as any).expiryDate || '',
           createdAt: card.created_at,
         })));
       }
@@ -890,84 +892,50 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="cards" className="animate-fade-in space-y-5">
-            {/* Credit Portfolio Summary Banner */}
+            {/* Ultra-compact Credit Portfolio Summary Strip */}
             {cards.length > 0 && (
-              <div className="p-4 md:p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-elevated border border-white/10 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-3xl pointer-events-none" />
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1 text-xs text-white/70 font-semibold uppercase tracking-wider">
-                      <CreditCard className="w-4 h-4 text-amber-400" />
-                      <span>Credit Cards Portfolio</span>
-                    </div>
-                    <div className="flex items-baseline gap-3">
-                      <span className="text-2xl md:text-3xl font-extrabold font-mono text-amber-300">
-                        ₹{totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                      </span>
-                      <span className="text-xs text-white/70">
-                        Total Bills Due
-                      </span>
-                    </div>
+              <div className="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md border border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-white/10 rounded-lg text-amber-400">
+                    <CreditCard className="w-4 h-4" />
                   </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:gap-4 text-xs">
-                    <div className="p-2.5 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md">
-                      <span className="text-white/60 block text-[11px]">Total Limit</span>
-                      <span className="font-bold text-sm text-white">
-                        ₹{cards.reduce((sum, c) => sum + c.limitAmount, 0).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md">
-                      <span className="text-white/60 block text-[11px]">Available Credit</span>
-                      <span className="font-bold text-sm text-emerald-400">
-                        ₹{Math.max(0, cards.reduce((sum, c) => sum + c.limitAmount, 0) - totalBill).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-                    <div className="p-2.5 rounded-2xl bg-white/10 border border-white/10 backdrop-blur-md col-span-2 sm:col-span-1">
-                      <span className="text-white/60 block text-[11px]">Utilization</span>
-                      <span className={cn(
-                        "font-bold text-sm",
-                        (cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
-                          ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
-                          : 0) > 75 
-                          ? "text-red-400" 
-                          : "text-emerald-400"
-                      )}>
-                        {cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
-                          ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
-                          : 0}% Used
-                      </span>
-                    </div>
+                  <div>
+                    <span className="text-[10px] text-white/60 uppercase font-semibold block leading-none">Portfolio Due</span>
+                    <span className="text-base font-extrabold font-mono text-amber-300 leading-tight">
+                      ₹{totalBill.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </span>
                   </div>
                 </div>
 
-                {/* Utilization Progress Bar */}
-                {cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 && (
-                  <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-3">
-                    <div className="flex-1 h-2 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/10">
-                      <div 
-                        className={cn(
-                          "h-full rounded-full transition-all duration-500",
-                          Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) > 75 
-                            ? "bg-red-500" 
-                            : Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) > 50 
-                              ? "bg-amber-400" 
-                              : "bg-emerald-400"
-                        )}
-                        style={{ 
-                          width: `${Math.min(100, Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100))}%` 
-                        }}
-                      />
-                    </div>
-                    <span className="text-[11px] font-semibold text-white/80 shrink-0">
-                      {Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) < 30 
-                        ? '🟢 Safe Ratio' 
-                        : Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) < 70 
-                          ? '🟡 Moderate' 
-                          : '🔴 High Usage'}
+                <div className="flex items-center gap-3 sm:gap-6 text-[11px] border-l border-white/15 pl-3 sm:pl-4">
+                  <div>
+                    <span className="text-white/60 block text-[10px]">Total Limit</span>
+                    <span className="font-bold text-white">
+                      ₹{cards.reduce((sum, c) => sum + c.limitAmount, 0).toLocaleString('en-IN')}
                     </span>
                   </div>
-                )}
+                  <div>
+                    <span className="text-white/60 block text-[10px]">Available</span>
+                    <span className="font-bold text-emerald-400">
+                      ₹{Math.max(0, cards.reduce((sum, c) => sum + c.limitAmount, 0) - totalBill).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="hidden sm:block">
+                    <span className="text-white/60 block text-[10px]">Utilization</span>
+                    <span className={cn(
+                      "font-bold",
+                      (cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
+                        ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
+                        : 0) > 75 
+                        ? "text-red-400" 
+                        : "text-emerald-400"
+                    )}>
+                      {cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
+                        ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
+                        : 0}% Used
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
 
