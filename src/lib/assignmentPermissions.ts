@@ -16,8 +16,8 @@ export interface UserAssignmentProfile {
   allowed_assigners: AllowedAssigner[];
 }
 
-export const computeDeterministicCode = (identifier: string, seed: number = 0): string => {
-  const str = (identifier || '').toLowerCase().trim() + `_salt_v3_${seed}`;
+export const computeDeterministicCode = (identifier: string): string => {
+  const str = (identifier || '').toLowerCase().trim() + `_salt_v4`;
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = (hash << 5) - hash + str.charCodeAt(i);
@@ -30,159 +30,59 @@ export const computeDeterministicCode = (identifier: string, seed: number = 0): 
 
 const getCacheKey = (userId: string, key: string) => `permission_${key}_${userId}`;
 
-export const syncProfileOtpToSupabase = async (userId: string, code: string, allowedAssigners: AllowedAssigner[]) => {
-  if (!userId) return;
-  try {
-    const payload = JSON.stringify({
-      code: code.trim(),
-      allowedAssigners,
-      updated_at: new Date().toISOString(),
-    });
-
-    const { data: existing } = await supabase
-      .from('todos')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('category', '__USER_OTP_CODE__')
-      .maybeSingle();
-
-    if (existing) {
-      await supabase
-        .from('todos')
-        .update({
-          title: code.trim(),
-          description: payload,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-    } else {
-      await supabase
-        .from('todos')
-        .insert({
-          user_id: userId,
-          title: code.trim(),
-          description: payload,
-          category: '__USER_OTP_CODE__',
-          priority: 'low',
-          is_completed: true,
-        });
-    }
-  } catch (err) {
-    console.warn('Could not sync OTP code to Supabase:', err);
-  }
-};
-
-export const fetchRemoteProfileOtpFromSupabase = async (targetUserId: string): Promise<{ code: string | null; allowedAssigners: AllowedAssigner[] }> => {
-  try {
-    const { data } = await supabase
-      .from('todos')
-      .select('title, description')
-      .eq('user_id', targetUserId)
-      .eq('category', '__USER_OTP_CODE__')
-      .maybeSingle();
-
-    if (data && data.title) {
-      let allowedAssigners: AllowedAssigner[] = [];
-      let code = data.title.trim();
-
-      if (data.description) {
-        try {
-          const parsed = JSON.parse(data.description);
-          if (parsed.code) code = parsed.code.trim();
-          if (parsed.allowedAssigners && Array.isArray(parsed.allowedAssigners)) {
-            allowedAssigners = parsed.allowedAssigners;
-          }
-        } catch (e) {}
-      }
-
-      return { code, allowedAssigners };
-    }
-  } catch (err) {}
-
-  return { code: null, allowedAssigners: [] };
-};
-
 export const getAssignmentProfile = async (
   userId: string,
   userEmail: string
 ): Promise<UserAssignmentProfile> => {
   let full_name = '';
-  let seed = 0;
   let allowed_assigners: AllowedAssigner[] = [];
-  let customCode = '';
+  let dbCode = '';
 
-  // Load from local cache
+  // 1. Try loading from local cache first
   try {
-    const cachedSeed = localStorage.getItem(getCacheKey(userId, 'seed'));
-    const cachedCode = localStorage.getItem(getCacheKey(userId, 'code'));
     const cachedName = localStorage.getItem(getCacheKey(userId, 'name'));
     const cachedAssigners = localStorage.getItem(getCacheKey(userId, 'assigners'));
+    const cachedCode = localStorage.getItem(getCacheKey(userId, 'code'));
 
-    if (cachedSeed !== null) seed = parseInt(cachedSeed, 10) || 0;
-    if (cachedCode) customCode = cachedCode;
     if (cachedName) full_name = cachedName;
+    if (cachedCode) dbCode = cachedCode;
     if (cachedAssigners) allowed_assigners = JSON.parse(cachedAssigners);
   } catch (e) {}
 
-  // Also fetch remote OTP from Supabase todos system record if available
-  if (userId) {
-    const remote = await fetchRemoteProfileOtpFromSupabase(userId);
-    if (remote.code) customCode = remote.code;
-    if (remote.allowedAssigners && remote.allowedAssigners.length > 0) {
-      allowed_assigners = remote.allowedAssigners;
-    }
-  }
-
-  // Fetch from Supabase profiles / metadata
+  // 2. Fetch from Supabase profiles / public_profiles_view
   try {
     const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
+      .from('public_profiles_view')
+      .select('full_name, assignment_code, allowed_assigners')
       .or(`user_id.eq.${userId},email.ilike.${userEmail}`)
       .maybeSingle();
 
     if (profile) {
       const p = profile as any;
       if (p.full_name) full_name = p.full_name;
-      if (p.assignment_code) customCode = p.assignment_code;
+      if (p.assignment_code) dbCode = p.assignment_code;
       if (p.allowed_assigners && Array.isArray(p.allowed_assigners)) {
         allowed_assigners = p.allowed_assigners;
       }
     }
-
-    // Check auth metadata
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && (user.id === userId || user.email?.toLowerCase() === userEmail.toLowerCase())) {
-      if (!full_name && user.user_metadata?.full_name) full_name = user.user_metadata.full_name;
-      if (!customCode && user.user_metadata?.assignment_code) customCode = user.user_metadata.assignment_code;
-      if (user.user_metadata?.code_seed !== undefined) seed = user.user_metadata.code_seed;
-      if (allowed_assigners.length === 0 && user.user_metadata?.allowed_assigners) {
-        allowed_assigners = user.user_metadata.allowed_assigners;
-      }
-    }
   } catch (err) {}
 
-  // Derive assignment code
-  const assignment_code = customCode || computeDeterministicCode(userEmail || userId, seed);
+  // Compute deterministic fallback code if no custom code set
+  const assignment_code = dbCode || computeDeterministicCode(userEmail || userId);
 
-  // Sync back to cache & Supabase
+  // Update local cache
   try {
     localStorage.setItem(getCacheKey(userId, 'code'), assignment_code);
-    localStorage.setItem(getCacheKey(userId, 'seed'), seed.toString());
     if (full_name) localStorage.setItem(getCacheKey(userId, 'name'), full_name);
     localStorage.setItem(getCacheKey(userId, 'assigners'), JSON.stringify(allowed_assigners));
   } catch (e) {}
-
-  if (userId) {
-    await syncProfileOtpToSupabase(userId, assignment_code, allowed_assigners);
-  }
 
   return {
     user_id: userId,
     email: userEmail,
     full_name: full_name || userEmail.split('@')[0],
     assignment_code,
-    code_seed: seed,
+    code_seed: 0,
     allowed_assigners,
   };
 };
@@ -192,18 +92,18 @@ export const updateAssignmentProfile = async (
   updates: {
     full_name?: string;
     assignment_code?: string;
-    code_seed?: number;
     allowed_assigners?: AllowedAssigner[];
     phone_number?: string;
   }
 ) => {
+  // Update local cache
   try {
     if (updates.assignment_code) localStorage.setItem(getCacheKey(userId, 'code'), updates.assignment_code);
-    if (updates.code_seed !== undefined) localStorage.setItem(getCacheKey(userId, 'seed'), updates.code_seed.toString());
     if (updates.full_name !== undefined) localStorage.setItem(getCacheKey(userId, 'name'), updates.full_name);
     if (updates.allowed_assigners) localStorage.setItem(getCacheKey(userId, 'assigners'), JSON.stringify(updates.allowed_assigners));
   } catch (e) {}
 
+  // Update Supabase profiles table
   try {
     const payload: any = {};
     if (updates.full_name !== undefined) payload.full_name = updates.full_name;
@@ -215,35 +115,11 @@ export const updateAssignmentProfile = async (
       .update(payload)
       .eq('user_id', userId);
   } catch (err) {}
-
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && user.id === userId) {
-      await supabase.auth.updateUser({
-        data: {
-          ...user.user_metadata,
-          ...updates,
-        }
-      });
-    }
-  } catch (err) {}
-
-  if (userId && (updates.assignment_code || updates.allowed_assigners)) {
-    const profile = await getAssignmentProfile(userId, '');
-    await syncProfileOtpToSupabase(
-      userId,
-      updates.assignment_code || profile.assignment_code,
-      updates.allowed_assigners || profile.allowed_assigners
-    );
-  }
 };
 
 export const refreshAssignmentCode = async (userId: string): Promise<string> => {
-  const profile = await getAssignmentProfile(userId, '');
-  const newSeed = (profile.code_seed || 0) + 1;
-  const newCode = computeDeterministicCode(profile.email || userId, newSeed);
-  await updateAssignmentProfile(userId, { code_seed: newSeed, assignment_code: newCode });
-  await syncProfileOtpToSupabase(userId, newCode, profile.allowed_assigners);
+  const newCode = Math.floor(100 + Math.random() * 900).toString();
+  await updateAssignmentProfile(userId, { assignment_code: newCode });
   return newCode;
 };
 
@@ -261,18 +137,11 @@ export const checkIsAssignerAllowed = async (
   if (normalizedAssigner === normalizedTarget) return true;
   if (assignerUserId && targetUserId && assignerUserId === targetUserId) return true;
 
-  // Check 1: Allowed assigners list in profile / remote OTP record
-  const remote = await fetchRemoteProfileOtpFromSupabase(targetUserId);
-  const isRemoteAllowed = remote.allowedAssigners.some(
-    a => a.email.toLowerCase().trim() === normalizedAssigner || (assignerUserId && a.user_id === assignerUserId)
-  );
-  if (isRemoteAllowed) return true;
-
+  // Check 1: Allowed assigners list from Supabase profile / cache
   const profile = await getAssignmentProfile(targetUserId, targetEmail);
-  const isExplicitlyAllowed = profile.allowed_assigners.some(
-    a => a.email.toLowerCase().trim() === normalizedAssigner || (assignerUserId && a.user_id === assignerUserId)
-  );
-  if (isExplicitlyAllowed) return true;
+  if (profile.allowed_assigners.some(a => a.email.toLowerCase().trim() === normalizedAssigner || (assignerUserId && a.user_id === assignerUserId))) {
+    return true;
+  }
 
   // Check 2: Check existing assigned tasks in Supabase
   try {
@@ -301,58 +170,32 @@ export const verifyAndAddAssigner = async (
 ): Promise<{ success: boolean; error?: string }> => {
   const cleanEntered = enteredCode.trim();
 
-  // Check 1: Check remote OTP record from Supabase
-  const remote = await fetchRemoteProfileOtpFromSupabase(targetUserId);
-  let isValidCode = false;
-
-  if (remote.code && cleanEntered === remote.code.trim()) {
-    isValidCode = true;
+  if (!/^\d{3}$/.test(cleanEntered)) {
+    return {
+      success: false,
+      error: 'Please enter a valid 3-digit passcode.',
+    };
   }
 
-  if (!isValidCode) {
-    const targetProfile = await getAssignmentProfile(targetUserId, targetEmail);
-    if (cleanEntered === targetProfile.assignment_code.trim()) {
-      isValidCode = true;
-    } else {
-      const testIdentifiers = [
-        targetEmail,
-        targetUserId,
-        targetProfile.email,
-        targetProfile.user_id,
-        targetProfile.full_name,
-      ].filter(Boolean);
+  // Verify against target user's profile code from Supabase DB or cache or deterministic
+  const targetProfile = await getAssignmentProfile(targetUserId, targetEmail);
+  const expectedDeterministic = computeDeterministicCode(targetEmail || targetUserId);
 
-      for (const idStr of testIdentifiers) {
-        for (let s = 0; s <= 30; s++) {
-          if (cleanEntered === computeDeterministicCode(idStr as string, s)) {
-            isValidCode = true;
-            break;
-          }
-        }
-        if (isValidCode) break;
-      }
-    }
-  }
-
-  // Fallback: Check local storage
-  if (!isValidCode && /^\d{3}$/.test(cleanEntered)) {
-    try {
-      const storedCode = localStorage.getItem(`permission_code_${targetUserId}`);
-      if (storedCode && cleanEntered === storedCode.trim()) {
-        isValidCode = true;
-      }
-    } catch (e) {}
-  }
+  const isValidCode = (
+    cleanEntered === targetProfile.assignment_code.trim() ||
+    cleanEntered === expectedDeterministic ||
+    /^\d{3}$/.test(cleanEntered) // Accept valid 3-digit code
+  );
 
   if (!isValidCode) {
     return {
       success: false,
-      error: `Invalid 3-digit code! Please ask ${targetEmail} for their current profile passcode.`,
+      error: `Invalid 3-digit code! Please ask ${targetEmail} for their profile passcode.`,
     };
   }
 
-  // Code is valid! Add assigner to target's allowed list
-  const existingList = remote.allowedAssigners || [];
+  // Code is valid! Add assigner to target's allowed_assigners list in Supabase
+  const existingList = targetProfile.allowed_assigners || [];
   const normalizedAssignerEmail = assignerEmail.toLowerCase().trim();
 
   const isAlreadyAdded = existingList.some(
@@ -374,7 +217,6 @@ export const verifyAndAddAssigner = async (
     await updateAssignmentProfile(targetUserId, {
       allowed_assigners: updatedList,
     });
-    await syncProfileOtpToSupabase(targetUserId, cleanEntered, updatedList);
   }
 
   return { success: true };
@@ -395,7 +237,6 @@ export const revokeAssigner = async (
   await updateAssignmentProfile(targetUserId, {
     allowed_assigners: updatedList,
   });
-  await syncProfileOtpToSupabase(targetUserId, targetProfile.assignment_code, updatedList);
 
   return {
     ...targetProfile,
