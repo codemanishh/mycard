@@ -19,7 +19,7 @@ import { ProfileDialog } from '@/components/ProfileDialog';
 import { VoicePaymentDialog } from '@/components/VoicePaymentDialog';
 import TodoApp from '@/pages/TodoApp';
 import { Button } from '@/components/ui/button';
-import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic, CircleDot } from 'lucide-react';
+import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic, CircleDot, PieChart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -733,6 +733,9 @@ const Index = () => {
   };
 
   const totalBill = cards.reduce((sum, card) => sum + card.currentBill, 0);
+  const totalLimit = cards.reduce((sum, card) => sum + card.limitAmount, 0);
+  const usedLimit = totalBill;
+  const utilizationPercent = totalLimit > 0 ? Math.round((usedLimit / totalLimit) * 100) : 0;
   const totalBankBalance = bankAccounts.reduce((sum, bank) => sum + bank.balance, 0);
   const netActualBalance = totalBankBalance - totalBill;
   const activeCards = cards.filter(c => c.status === 'active').length;
@@ -847,37 +850,65 @@ const Index = () => {
             </Button>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-3 gap-2 md:gap-3 mt-3 md:mt-4">
-            <div className="bg-white/15 backdrop-blur-md rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-white/20">
-              <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-2">
-                <div className="p-1 md:p-1.5 bg-white/20 rounded-md md:rounded-lg">
-                  <TrendingUp className="w-3 h-3 md:w-3.5 md:h-3.5" />
+          {/* Unified Credit Summary Box */}
+          <div className="bg-white/15 backdrop-blur-md rounded-xl md:rounded-2xl p-3 md:p-4 border border-white/20 mt-3 md:mt-4 shadow-lg space-y-3">
+            <div className="grid grid-cols-3 gap-2 md:gap-4 divide-x divide-white/20 text-center">
+              {/* 1st: Total Limit */}
+              <div className="px-1 md:px-2">
+                <div className="flex items-center justify-center gap-1 md:gap-1.5 mb-1">
+                  <div className="p-1 bg-white/20 rounded-md">
+                    <CreditCard className="w-3 h-3 md:w-3.5 md:h-3.5 text-white" />
+                  </div>
+                  <p className="text-[10px] md:text-xs text-white/80 font-medium uppercase tracking-wider">Total Limit</p>
                 </div>
-                <p className="text-[10px] md:text-xs text-white/80">Total Bill</p>
+                <p className="text-sm md:text-xl font-bold font-mono text-white">₹{totalLimit.toLocaleString('en-IN')}</p>
               </div>
-              <p className="text-base md:text-xl font-bold">₹{totalBill.toLocaleString('en-IN')}</p>
-            </div>
-            
-            <div className="bg-white/15 backdrop-blur-md rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-white/20">
-              <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-2">
-                <div className="p-1 md:p-1.5 bg-white/20 rounded-md md:rounded-lg">
-                  <CreditCard className="w-3 h-3 md:w-3.5 md:h-3.5" />
+
+              {/* 2nd: Used Limit */}
+              <div className="px-1 md:px-2">
+                <div className="flex items-center justify-center gap-1 md:gap-1.5 mb-1">
+                  <div className="p-1 bg-white/20 rounded-md">
+                    <TrendingUp className="w-3 h-3 md:w-3.5 md:h-3.5 text-white" />
+                  </div>
+                  <p className="text-[10px] md:text-xs text-white/80 font-medium uppercase tracking-wider">Used Limit</p>
                 </div>
-                <p className="text-[10px] md:text-xs text-white/80">Active</p>
+                <p className="text-sm md:text-xl font-bold font-mono text-white">₹{usedLimit.toLocaleString('en-IN')}</p>
               </div>
-              <p className="text-base md:text-xl font-bold">{activeCards}</p>
-            </div>
-            
-            <div className="bg-white/15 backdrop-blur-md rounded-xl md:rounded-2xl p-2.5 md:p-4 border border-white/20">
-              <div className="flex items-center gap-1.5 md:gap-2 mb-1 md:mb-2">
-                <div className="p-1 md:p-1.5 bg-white/20 rounded-md md:rounded-lg">
-                  <Bell className="w-3 h-3 md:w-3.5 md:h-3.5" />
+
+              {/* 3rd: % Utilized */}
+              <div className="px-1 md:px-2">
+                <div className="flex items-center justify-center gap-1 md:gap-1.5 mb-1">
+                  <div className="p-1 bg-white/20 rounded-md">
+                    <PieChart className="w-3 h-3 md:w-3.5 md:h-3.5 text-white" />
+                  </div>
+                  <p className="text-[10px] md:text-xs text-white/80 font-medium uppercase tracking-wider">% Utilized</p>
                 </div>
-                <p className="text-[10px] md:text-xs text-white/80">Due Soon</p>
+                <p className={cn(
+                  "text-sm md:text-xl font-bold font-mono",
+                  utilizationPercent > 75 ? "text-red-300" : utilizationPercent > 50 ? "text-amber-300" : "text-emerald-300"
+                )}>
+                  {utilizationPercent}%
+                </p>
               </div>
-              <p className="text-base md:text-xl font-bold">{upcomingBills}</p>
             </div>
+
+            {/* % Utilized Progress Bar */}
+            {totalLimit > 0 && (
+              <div className="flex items-center gap-2 pt-1 border-t border-white/10">
+                <div className="flex-1 h-2 bg-black/30 rounded-full overflow-hidden p-0.5 border border-white/10">
+                  <div 
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      utilizationPercent > 75 ? "bg-red-400" : utilizationPercent > 50 ? "bg-amber-300" : "bg-emerald-400"
+                    )}
+                    style={{ width: `${Math.min(100, utilizationPercent)}%` }}
+                  />
+                </div>
+                <span className="text-[10px] md:text-xs font-semibold text-white/90 shrink-0">
+                  {utilizationPercent < 30 ? '🟢 Safe Ratio' : utilizationPercent < 70 ? '🟡 Moderate' : '🔴 High Usage'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -892,73 +923,6 @@ const Index = () => {
           </TabsList>
 
           <TabsContent value="cards" className="animate-fade-in space-y-5">
-            {/* Compact Credit Summary Bar with % Utilized & Limit Breakdown */}
-            {cards.length > 0 && (
-              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-md border border-white/10 space-y-2.5">
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3 sm:gap-6">
-                    <div>
-                      <span className="text-white/60 text-[10px] uppercase font-semibold block">Total Limit</span>
-                      <span className="font-extrabold text-sm text-white font-mono">
-                        ₹{cards.reduce((sum, c) => sum + c.limitAmount, 0).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-
-                    <div className="border-l border-white/15 pl-3 sm:pl-6">
-                      <span className="text-white/60 text-[10px] uppercase font-semibold block">Available Credit</span>
-                      <span className="font-extrabold text-sm text-emerald-400 font-mono">
-                        ₹{Math.max(0, cards.reduce((sum, c) => sum + c.limitAmount, 0) - totalBill).toLocaleString('en-IN')}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-white/60 text-[10px] uppercase font-semibold block">Credit Utilized</span>
-                    <span className={cn(
-                      "font-extrabold text-sm font-mono",
-                      (cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
-                        ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
-                        : 0) > 75 
-                        ? "text-red-400" 
-                        : "text-emerald-400"
-                    )}>
-                      {cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 
-                        ? Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) 
-                        : 0}% Utilized
-                    </span>
-                  </div>
-                </div>
-
-                {/* % Utilized Progress Bar */}
-                {cards.reduce((sum, c) => sum + c.limitAmount, 0) > 0 && (
-                  <div className="flex items-center gap-2.5 pt-0.5">
-                    <div className="flex-1 h-2 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/10">
-                      <div 
-                        className={cn(
-                          "h-full rounded-full transition-all duration-500",
-                          Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) > 75 
-                            ? "bg-red-500" 
-                            : Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) > 50 
-                              ? "bg-amber-400" 
-                              : "bg-emerald-400"
-                        )}
-                        style={{ 
-                          width: `${Math.min(100, Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100))}%` 
-                        }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-semibold text-white/80 shrink-0">
-                      {Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) < 30 
-                        ? '🟢 Safe Ratio' 
-                        : Math.round((totalBill / cards.reduce((sum, c) => sum + c.limitAmount, 0)) * 100) < 70 
-                          ? '🟡 Moderate' 
-                          : '🔴 High Usage'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Header & View Switcher Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
               <div className="flex items-center gap-2">
