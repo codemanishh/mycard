@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
 import { BankAccount, Expense, Lending } from '@/types/expense';
 import { CreditCardItem } from '@/components/CreditCardItem';
-import { CardCircle } from '@/components/CardCircle';
+import { CardRectangle } from '@/components/CardRectangle';
 import { CardDetailsDialog } from '@/components/CardDetailsDialog';
 import { AddCardDialog } from '@/components/AddCardDialog';
 import { BankBalanceCard } from '@/components/BankBalanceCard';
@@ -1053,10 +1053,10 @@ const Index = () => {
                 </Button>
               </Card>
             ) : viewMode === 'circles' ? (
-              /* CIRCLES VIEW (DEFAULT) */
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 sm:gap-6 justify-items-center pt-2">
+              /* RECTANGULAR CARDS GRID (DEFAULT) */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
                 {sortedCards.map((card, index) => (
-                  <CardCircle
+                  <CardRectangle
                     key={card.id}
                     card={card}
                     onClick={handleCardClick}

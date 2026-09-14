@@ -58,18 +58,25 @@ export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense }: CreditC
 
         {/* Detailed Metrics */}
         <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="p-2.5 rounded-xl bg-muted/40 border border-border/30">
-            <span className="text-muted-foreground block text-[11px] mb-0.5">Available Credit</span>
-            <span className="font-bold text-sm text-foreground">₹{availableCredit.toLocaleString('en-IN')}</span>
+          <div className={cn(
+            "p-2.5 rounded-xl border",
+            hasOverdue ? "bg-red-500/10 border-red-500/30" : "bg-muted/40 border-border/30"
+          )}>
+            <span className="text-muted-foreground block text-[11px] mb-0.5">
+              {hasOverdue ? "Due / Overdue" : "Due Amount"}
+            </span>
+            <span className={cn(
+              "font-extrabold text-sm block font-mono",
+              hasOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+            )}>
+              ₹{status.overdueAmount.toLocaleString('en-IN')}
+            </span>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-muted/40 border border-border/30">
-            <span className="text-muted-foreground block text-[11px] mb-0.5">Utilization</span>
-            <span className={cn(
-              "font-bold text-sm",
-              utilizationPercent > 75 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"
-            )}>
-              {utilizationPercent}% of ₹{card.limitAmount.toLocaleString('en-IN')}
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/20 border border-emerald-500/20">
+            <span className="text-muted-foreground block text-[11px] mb-0.5">Current Month</span>
+            <span className="font-bold text-sm text-emerald-600 dark:text-emerald-400 block font-mono">
+              ₹{status.currentAmount.toLocaleString('en-IN')}
             </span>
           </div>
         </div>
