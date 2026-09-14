@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { Badge } from '@/components/ui/badge';

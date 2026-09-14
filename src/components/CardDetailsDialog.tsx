@@ -139,10 +139,7 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
                 <IndianRupee className="w-3 h-3 text-amber-500" />
                 <span>{hasOverdue && status.currentAmount > 0 ? "Current Month" : "Current Bill"}</span>
               </div>
-              <p className={cn(
-                "text-base sm:text-lg font-bold font-mono",
-                status.currentAmount > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground"
-              )}>
+              <p className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
                 ₹{status.currentAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
             </div>

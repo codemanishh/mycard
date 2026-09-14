@@ -93,22 +93,19 @@ export const CardCircle = ({ card, onClick, index }: CardCircleProps) => {
         {/* Line 3: Overdue & Current Month Amount breakdown */}
         {hasOverdue && hasCurrent ? (
           <div className="space-y-0 text-center leading-tight">
-            <p className="text-[10px] font-bold text-red-500 font-mono truncate">
-              Overdue: ₹{status.overdueAmount.toLocaleString('en-IN')}
+            <p className="text-[10px] font-extrabold text-red-600 dark:text-red-400 font-mono truncate">
+              Due: ₹{status.overdueAmount.toLocaleString('en-IN')}
             </p>
-            <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 font-mono truncate">
+            <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 font-mono truncate">
               Curr: ₹{status.currentAmount.toLocaleString('en-IN')}
             </p>
           </div>
         ) : hasOverdue ? (
-          <p className="text-[11px] font-extrabold text-red-500 font-mono leading-tight truncate">
-            ₹{status.overdueAmount.toLocaleString('en-IN')} <span className="text-[9px] font-bold uppercase">(Overdue)</span>
+          <p className="text-[11px] font-extrabold text-red-600 dark:text-red-400 font-mono leading-tight truncate">
+            ₹{status.overdueAmount.toLocaleString('en-IN')} <span className="text-[9px] font-bold uppercase">(OVERDUE)</span>
           </p>
         ) : (
-          <p className={cn(
-            "text-[11px] font-bold font-mono leading-tight truncate",
-            status.totalDue > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
-          )}>
+          <p className="text-[11px] font-bold font-mono leading-tight truncate text-emerald-600 dark:text-emerald-400">
             ₹{status.totalDue > 0 ? status.totalDue.toLocaleString('en-IN') : '0'}
           </p>
         )}
