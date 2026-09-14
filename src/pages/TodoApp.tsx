@@ -28,6 +28,8 @@ import { detectMissedFinancialTasks, SuggestedTask } from '@/lib/smartAutoTodo';
 import { SmartTodoDetector } from '@/components/SmartTodoDetector';
 import { CreditCard as CreditCardType } from '@/types/creditCard';
 import { BankAccount, Lending } from '@/types/expense';
+import { checkIsAssignerAllowed, verifyAndAddAssigner } from '@/lib/assignmentPermissions';
+import { KeyRound, ShieldAlert, Copy, User } from 'lucide-react';
 
 interface Subtask {
   id: string;
@@ -168,6 +170,21 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
   const [completedFilter, setCompletedFilter] = useState<'all' | 'own' | 'assigned'>('all');
   const [deletedFilter, setDeletedFilter] = useState<'all' | 'own' | 'assigned'>('all');
   
+  // User Profile Info Modal state
+  const [userModalProfile, setUserModalProfile] = useState<{ name: string; email: string; user_id?: string } | null>(null);
+
+  // OTP Verification Modal state
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpCodeInput, setOtpCodeInput] = useState('');
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [pendingAssignmentData, setPendingAssignmentData] = useState<{
+    targetUserId: string;
+    targetEmail: string;
+    targetName: string;
+    formData: any;
+    editingTodo: any;
+  } | null>(null);
+
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
@@ -310,17 +327,58 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
     setDetectedTasks([]);
   };
 
+  const getDisplayName = (userId?: string | null, fallbackEmail?: string) => {
+    if (userId && profileCache[userId]) {
+      const p = profileCache[userId];
+      if (p.full_name && p.full_name.trim()) return p.full_name.trim();
+      if (p.email) {
+        const uname = p.email.split('@')[0];
+        return uname.charAt(0).toUpperCase() + uname.slice(1);
+      }
+    }
+    if (fallbackEmail && fallbackEmail.includes('@')) {
+      const uname = fallbackEmail.split('@')[0];
+      return uname.charAt(0).toUpperCase() + uname.slice(1);
+    }
+    return fallbackEmail || 'User';
+  };
+
+  const getFullEmail = (userId?: string | null, fallbackEmail?: string) => {
+    if (userId && profileCache[userId]?.email) return profileCache[userId].email;
+    return fallbackEmail || '';
+  };
+
+  const handleOpenUserModal = (userId?: string | null, fallbackEmail?: string) => {
+    const name = getDisplayName(userId, fallbackEmail);
+    const email = getFullEmail(userId, fallbackEmail);
+    if (email || name) {
+      setUserModalProfile({ name, email: email || 'N/A', user_id: userId || undefined });
+    }
+  };
+
   const getProfileById = async (userId: string) => {
-    // profileCache keys are auth user ids (profiles.user_id)
+    if (!userId) return null;
     if (profileCache[userId]) return profileCache[userId];
     const { data, error } = await supabase
       .from('public_profiles_view')
       .select('user_id, id, email, full_name, avatar_url')
-      .eq('user_id', userId)
+      .or(`user_id.eq.${userId},id.eq.${userId}`)
       .maybeSingle();
     if (!error && data) {
-      const normalized = { full_name: (data as any).full_name || undefined, avatar_url: (data as any).avatar_url || undefined, email: (data as any).email };
-      setProfileCache(prev => ({ ...prev, [userId]: normalized }));
+      const normalized = {
+        user_id: (data as any).user_id,
+        profile_id: (data as any).id,
+        id: (data as any).user_id || (data as any).id,
+        full_name: (data as any).full_name || undefined,
+        avatar_url: (data as any).avatar_url || undefined,
+        email: (data as any).email,
+      };
+      setProfileCache(prev => ({
+        ...prev,
+        [(data as any).user_id]: normalized,
+        [(data as any).id]: normalized,
+        [((data as any).email || '').toLowerCase()]: normalized,
+      }));
       return normalized;
     }
     return null;
@@ -378,7 +436,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       }
 
       // Pre-fetch both assignee and assigner profiles so email/name badges work
-      const userIdsToFetch = [...new Set(mappedTodos.flatMap(t => [t.assigned_to, t.assigned_by]).filter(Boolean))];
+      const userIdsToFetch = [...new Set([user.id, ...mappedTodos.flatMap(t => [t.user_id, t.assigned_to, t.assigned_by]).filter(Boolean)])];
       for (const id of userIdsToFetch) {
         await getProfileById(id as string);
       }
@@ -398,33 +456,38 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       const { data, error } = await supabase
         .from('public_profiles_view')
         .select('user_id, id, email, full_name, avatar_url')
-        .ilike('email', email)
+        .ilike('email', email.trim())
         .limit(1)
         .maybeSingle();
 
-      console.debug('lookupProfileByEmail result:', { email, data, error });
-      if (error) {
-        toast({ title: 'Profile lookup error', description: error.message, variant: 'destructive' });
-        setAssigneeProfile(null);
-        return null;
-      }
-      if (data) {
-        // store profile keyed by auth user id (user_id)
-        setAssigneeProfile({ id: (data as any).id, user_id: (data as any).user_id, email: (data as any).email, full_name: (data as any).full_name, avatar_url: (data as any).avatar_url } as any);
-        return data as any;
+      if (!error && data) {
+        const normalized = {
+          id: (data as any).user_id || (data as any).id,
+          user_id: (data as any).user_id,
+          profile_id: (data as any).id,
+          email: (data as any).email,
+          full_name: (data as any).full_name,
+          avatar_url: (data as any).avatar_url,
+        };
+        setAssigneeProfile(normalized);
+        setProfileCache(prev => ({
+          ...prev,
+          [normalized.user_id]: normalized,
+          [normalized.profile_id]: normalized,
+          [normalized.email.toLowerCase()]: normalized,
+        }));
+        return normalized;
       }
       setAssigneeProfile(null);
       return null;
     } catch (err: any) {
-      console.error('lookupProfileByEmail exception', err);
-      toast({ title: 'Profile lookup failed', description: err.message || String(err), variant: 'destructive' });
       setAssigneeProfile(null);
       return null;
     }
   };
 
   // Profile search/autocomplete (returns up to 5 matches)
-  const [profileSuggestions, setProfileSuggestions] = useState<Array<{ id: string; full_name?: string; email?: string; avatar_url?: string }>>([]);
+  const [profileSuggestions, setProfileSuggestions] = useState<Array<{ id: string; user_id?: string; profile_id?: string; full_name?: string; email?: string; avatar_url?: string }>>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState('');
   const [profileSearchLoading, setProfileSearchLoading] = useState(false);
 
@@ -441,17 +504,20 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         .ilike('email', `%${q}%`)
         .limit(5);
       setProfileSearchLoading(false);
-      console.debug('searchProfiles', { q, data, error });
       if (error) {
-        toast({ title: 'Profile search error', description: error.message, variant: 'destructive' });
         setProfileSuggestions([]);
         return;
       }
-      setProfileSuggestions((data as any || []).map((d: any) => ({ user_id: d.user_id, id: d.id, email: d.email, full_name: d.full_name, avatar_url: d.avatar_url })));
+      setProfileSuggestions((data as any || []).map((d: any) => ({
+        user_id: d.user_id,
+        id: d.user_id || d.id, // Always auth user UUID!
+        profile_id: d.id,
+        email: d.email,
+        full_name: d.full_name,
+        avatar_url: d.avatar_url
+      })));
     } catch (err: any) {
       setProfileSearchLoading(false);
-      console.error('searchProfiles exception', err);
-      toast({ title: 'Profile search failed', description: err.message || String(err), variant: 'destructive' });
       setProfileSuggestions([]);
     }
   };
@@ -464,48 +530,40 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
     return () => clearTimeout(t);
   }, [profileSearchQuery, formData.assignee_email, formData.assignTo]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title.trim() || !user) return;
-    // If assign toggle is on, require a selected assignee
-    if ((formData as any).assignTo && !(formData as any).assigned_to) {
-      toast({ title: 'Please select a user to assign to' });
-      return;
-    }
-
-    if (editingTodo) {
+  const executeSaveTodo = async (form: any, editing: any, targetAssignedTo: string | null) => {
+    if (!user) return;
+    if (editing) {
       if (navigator.onLine) {
         const { error } = await supabase
           .from('todos')
           .update({
-            title: formData.title,
-            description: formData.description || null,
-            due_date: formData.due_date || null,
-            expected_completion_date: formData.expected_completion_date || null,
-            assigned_to: formData.assigned_to || null,
-            assigned_by: formData.assigned_to ? user.id : null,
-            assignment_status: formData.assigned_to ? 'pending' : 'open',
-            assigned_at: formData.assigned_to ? new Date().toISOString() : null,
-            priority: formData.priority,
-            category: formData.category || null,
-            recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
-            is_template: (formData as any).is_template,
+            title: form.title,
+            description: form.description || null,
+            due_date: form.due_date || null,
+            expected_completion_date: form.expected_completion_date || null,
+            assigned_to: targetAssignedTo,
+            assigned_by: targetAssignedTo ? user.id : null,
+            assignment_status: targetAssignedTo ? 'pending' : 'open',
+            assigned_at: targetAssignedTo ? new Date().toISOString() : null,
+            priority: form.priority,
+            category: form.category || null,
+            recurrence_pattern: form.recurrence_pattern === 'none' ? null : form.recurrence_pattern,
+            is_template: (form as any).is_template,
           })
-          .eq('id', editingTodo.id);
+          .eq('id', editing.id);
 
         if (!error) {
           const updatedTodos = todos.map(t => 
-            t.id === editingTodo.id 
-              ? { ...t, ...formData, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, category: formData.category || undefined }
+            t.id === editing.id 
+              ? { ...t, ...form, assigned_to: targetAssignedTo || undefined, assigned_by: targetAssignedTo ? user.id : undefined, description: form.description || undefined, due_date: form.due_date || undefined, expected_completion_date: form.expected_completion_date || undefined, category: form.category || undefined }
               : t
           );
           setTodos(sortTodosByDueDate(updatedTodos));
           toast({ title: 'Task Updated' });
         }
       } else {
-        // offline: queue update and optimistically update
-        await queueMutation('supabase', { op: 'update', table: 'todos', data: { title: formData.title, description: formData.description || null, due_date: formData.due_date || null, expected_completion_date: formData.expected_completion_date || null, assigned_to: formData.assigned_to || null, assigned_by: formData.assigned_to ? user.id : null, assignment_status: formData.assigned_to ? 'pending' : 'open', assigned_at: formData.assigned_to ? new Date().toISOString() : null, priority: formData.priority, category: formData.category || null, recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern, is_template: (formData as any).is_template }, match: { id: editingTodo.id } });
-        const updatedTodos = todos.map(t => t.id === editingTodo.id ? { ...t, ...formData } : t);
+        await queueMutation('supabase', { op: 'update', table: 'todos', data: { title: form.title, description: form.description || null, due_date: form.due_date || null, expected_completion_date: form.expected_completion_date || null, assigned_to: targetAssignedTo, assigned_by: targetAssignedTo ? user.id : null, assignment_status: targetAssignedTo ? 'pending' : 'open', assigned_at: targetAssignedTo ? new Date().toISOString() : null, priority: form.priority, category: form.category || null, recurrence_pattern: form.recurrence_pattern === 'none' ? null : form.recurrence_pattern, is_template: (form as any).is_template }, match: { id: editing.id } });
+        const updatedTodos = todos.map(t => t.id === editing.id ? { ...t, ...form, assigned_to: targetAssignedTo || undefined, assigned_by: targetAssignedTo ? user.id : undefined } : t);
         setTodos(sortTodosByDueDate(updatedTodos));
         toast({ title: 'Task Updated (offline)' });
       }
@@ -515,19 +573,18 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           .from('todos')
           .insert({
             user_id: user.id,
-            title: formData.title,
-            description: formData.description || null,
-            due_date: formData.due_date || null,
-            expected_completion_date: formData.expected_completion_date || null,
-            priority: formData.priority,
-            category: formData.category || null,
-            recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern,
-            is_template: (formData as any).is_template,
-            // Assignment fields: include when assigning at creation
-            assigned_to: (formData as any).assigned_to || null,
-            assigned_by: (formData as any).assigned_to ? user.id : null,
-            assignment_status: (formData as any).assigned_to ? 'pending' : 'open',
-            assigned_at: (formData as any).assigned_to ? new Date().toISOString() : null,
+            title: form.title,
+            description: form.description || null,
+            due_date: form.due_date || null,
+            expected_completion_date: form.expected_completion_date || null,
+            priority: form.priority,
+            category: form.category || null,
+            recurrence_pattern: form.recurrence_pattern === 'none' ? null : form.recurrence_pattern,
+            is_template: (form as any).is_template,
+            assigned_to: targetAssignedTo,
+            assigned_by: targetAssignedTo ? user.id : null,
+            assignment_status: targetAssignedTo ? 'pending' : 'open',
+            assigned_at: targetAssignedTo ? new Date().toISOString() : null,
           })
           .select()
           .single();
@@ -550,16 +607,86 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           toast({ title: 'Task Added' });
         }
       } else {
-        // offline: queue insert and optimistic UI
         const tempId = `offline-todo-${Date.now()}`;
-        await queueMutation('supabase', { op: 'insert', table: 'todos', data: { user_id: user.id, title: formData.title, description: formData.description || null, due_date: formData.due_date || null, expected_completion_date: formData.expected_completion_date || null, priority: formData.priority, category: formData.category || null, recurrence_pattern: formData.recurrence_pattern === 'none' ? null : formData.recurrence_pattern, is_template: (formData as any).is_template, assigned_to: (formData as any).assigned_to || null, assigned_by: (formData as any).assigned_to ? user.id : null, assignment_status: (formData as any).assigned_to ? 'pending' : 'open', assigned_at: (formData as any).assigned_to ? new Date().toISOString() : null } });
-        const newTodo = { id: tempId, title: formData.title, description: formData.description || undefined, due_date: formData.due_date || undefined, expected_completion_date: formData.expected_completion_date || undefined, priority: formData.priority, category: formData.category || undefined, is_deleted: false, is_completed: false, created_at: new Date().toISOString(), subtasks: [] } as any;
+        await queueMutation('supabase', { op: 'insert', table: 'todos', data: { user_id: user.id, title: form.title, description: form.description || null, due_date: form.due_date || null, expected_completion_date: form.expected_completion_date || null, priority: form.priority, category: form.category || null, recurrence_pattern: form.recurrence_pattern === 'none' ? null : form.recurrence_pattern, is_template: (form as any).is_template, assigned_to: targetAssignedTo, assigned_by: targetAssignedTo ? user.id : null, assignment_status: targetAssignedTo ? 'pending' : 'open', assigned_at: targetAssignedTo ? new Date().toISOString() : null } });
+        const newTodo = { id: tempId, title: form.title, description: form.description || undefined, due_date: form.due_date || undefined, expected_completion_date: form.expected_completion_date || undefined, priority: form.priority, category: form.category || undefined, is_deleted: false, is_completed: false, created_at: new Date().toISOString(), subtasks: [] } as any;
         setTodos(sortTodosByDueDate([newTodo, ...todos]));
         toast({ title: 'Task Added (offline)' });
       }
     }
-
     closeDialog();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim() || !user) return;
+
+    let targetAssignedTo: string | null = null;
+    let targetAssignedEmail: string | null = null;
+    let targetAssignedName: string | null = null;
+
+    if ((formData as any).assignTo && (formData as any).assignee_email) {
+      const targetProfile = await lookupProfileByEmail((formData as any).assignee_email);
+      if (targetProfile) {
+        targetAssignedTo = targetProfile.user_id || targetProfile.id;
+        targetAssignedEmail = targetProfile.email;
+        targetAssignedName = targetProfile.full_name || targetProfile.email.split('@')[0];
+      } else if ((formData as any).assigned_to) {
+        targetAssignedTo = (formData as any).assigned_to;
+        targetAssignedEmail = (formData as any).assignee_email;
+      } else {
+        toast({ title: 'User email not found', description: `No account matching "${(formData as any).assignee_email}"`, variant: 'destructive' });
+        return;
+      }
+    }
+
+    // OTP Permission Guard: Check if target user has allowed task assignment from current user
+    if (targetAssignedTo && targetAssignedTo !== user.id && targetAssignedEmail) {
+      const isAllowed = await checkIsAssignerAllowed(targetAssignedTo, targetAssignedEmail, user.email || '', user.id);
+      if (!isAllowed) {
+        setPendingAssignmentData({
+          targetUserId: targetAssignedTo,
+          targetEmail: targetAssignedEmail,
+          targetName: targetAssignedName || targetAssignedEmail,
+          formData,
+          editingTodo,
+        });
+        setOtpCodeInput('');
+        setOtpModalOpen(true);
+        return;
+      }
+    }
+
+    await executeSaveTodo(formData, editingTodo, targetAssignedTo);
+  };
+
+  const handleVerifyOtpAndSave = async () => {
+    if (!pendingAssignmentData || !user) return;
+    if (!otpCodeInput || otpCodeInput.trim().length !== 3) {
+      toast({ title: 'Invalid Code', description: 'Please enter a 3-digit OTP code.', variant: 'destructive' });
+      return;
+    }
+
+    setOtpVerifying(true);
+    const res = await verifyAndAddAssigner(
+      pendingAssignmentData.targetUserId,
+      pendingAssignmentData.targetEmail,
+      otpCodeInput.trim(),
+      user.email || '',
+      user.user_metadata?.full_name || user.email?.split('@')[0],
+      user.id
+    );
+    setOtpVerifying(false);
+
+    if (!res.success) {
+      toast({ title: 'Authorization Failed', description: res.error || 'Invalid 3-digit passcode', variant: 'destructive' });
+      return;
+    }
+
+    toast({ title: 'Permission Granted!', description: `You are now an authorized assigner for ${pendingAssignmentData.targetName}.` });
+    setOtpModalOpen(false);
+    await executeSaveTodo(pendingAssignmentData.formData, pendingAssignmentData.editingTodo, pendingAssignmentData.targetUserId);
+    setPendingAssignmentData(null);
   };
 
   const respondToAssignment = async (todo: Todo, action: 'accept' | 'reject' | 'wip' | 'closed') => {
@@ -790,6 +917,39 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
     setFormData({ title: '', description: '', due_date: '', expected_completion_date: '', assignee_email: '', assigned_to: '', assignTo: false, priority: 'medium', category: '', recurrence_pattern: 'none', is_template: false });
   };
 
+  // Robust user matching helpers for assigned_to and assigned_by
+  const isTaskAssignedToUser = (todo: Todo, userId: string, userEmail?: string) => {
+    if (!todo.assigned_to || !userId) return false;
+    if (todo.assigned_to === userId) return true;
+    const targetProfile = profileCache[todo.assigned_to];
+    if (targetProfile) {
+      if (targetProfile.user_id === userId || targetProfile.profile_id === userId) return true;
+      if (userEmail && targetProfile.email?.toLowerCase() === userEmail.toLowerCase()) return true;
+    }
+    const myProfile = profileCache[userId];
+    if (myProfile) {
+      if (todo.assigned_to === myProfile.profile_id || todo.assigned_to === myProfile.user_id) return true;
+      if (myProfile.email && profileCache[todo.assigned_to]?.email?.toLowerCase() === myProfile.email.toLowerCase()) return true;
+    }
+    return false;
+  };
+
+  const isTaskAssignedByUser = (todo: Todo, userId: string, userEmail?: string) => {
+    if (!todo.assigned_by || !userId) return false;
+    if (todo.assigned_by === userId) return true;
+    const targetProfile = profileCache[todo.assigned_by];
+    if (targetProfile) {
+      if (targetProfile.user_id === userId || targetProfile.profile_id === userId) return true;
+      if (userEmail && targetProfile.email?.toLowerCase() === userEmail.toLowerCase()) return true;
+    }
+    const myProfile = profileCache[userId];
+    if (myProfile) {
+      if (todo.assigned_by === myProfile.profile_id || todo.assigned_by === myProfile.user_id) return true;
+      if (myProfile.email && profileCache[todo.assigned_by]?.email?.toLowerCase() === myProfile.email.toLowerCase()) return true;
+    }
+    return false;
+  };
+
   const filteredTodos = sortTodosByDueDate(
     todos.filter(todo => {
       // 1. Search Query Filter
@@ -813,7 +973,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           return todo.user_id === user?.id && !todo.assigned_to;
         }
         if (deletedFilter === 'assigned') {
-          return todo.assigned_to === user?.id || (todo.assigned_by === user?.id && !!todo.assigned_to);
+          return user ? (isTaskAssignedToUser(todo, user.id, user.email) || isTaskAssignedByUser(todo, user.id, user.email)) : false;
         }
         return true;
       }
@@ -827,7 +987,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           return (todo.user_id === user?.id && !todo.assigned_to) || (todo.user_id === user?.id && todo.assigned_by === user?.id && !todo.assigned_to);
         }
         if (completedFilter === 'assigned') {
-          return todo.assigned_to === user?.id || (todo.assigned_by === user?.id && !!todo.assigned_to);
+          return user ? (isTaskAssignedToUser(todo, user.id, user.email) || isTaskAssignedByUser(todo, user.id, user.email)) : false;
         }
         return true;
       }
@@ -836,10 +996,10 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       if (todo.is_completed) return false;
 
       if (activeTab === 'assigned_to_me') {
-        return user && todo.assigned_to === user.id;
+        return user ? isTaskAssignedToUser(todo, user.id, user.email) : false;
       }
       if (activeTab === 'assigned_by_me') {
-        return user && todo.assigned_by === user.id;
+        return user ? isTaskAssignedByUser(todo, user.id, user.email) : false;
       }
 
       // Default 'all' tab: shows all active (uncompleted, non-deleted) tasks
@@ -909,25 +1069,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       )}
 
       <main className={cn("max-w-6xl mx-auto p-1 sm:p-2 md:p-4 relative z-10", !embedMode && "-mt-4")}>
-        {/* Compact Stats Bar for Embed Mode */}
-        {embedMode && (
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
-            <div className="bg-muted/40 backdrop-blur-md rounded-2xl p-3 border border-border/50 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Circle className="w-4 h-4 text-amber-500" />
-                <span className="text-xs font-medium text-muted-foreground">Pending Tasks</span>
-              </div>
-              <span className="text-lg font-bold text-foreground">{pendingCount}</span>
-            </div>
-            <div className="bg-muted/40 backdrop-blur-md rounded-2xl p-3 border border-border/50 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <span className="text-xs font-medium text-muted-foreground">Completed</span>
-              </div>
-              <span className="text-lg font-bold text-foreground">{completedCount}</span>
-            </div>
-          </div>
-        )}
+
         {/* Reminders Notifications */}
         {upcomingReminders.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -975,7 +1117,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              For me <span className="hidden sm:inline ml-1 font-semibold">({user ? todos.filter(t => t.assigned_to === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
+              For me <span className="hidden sm:inline ml-1 font-semibold">({user ? todos.filter(t => isTaskAssignedToUser(t, user.id, user.email) && !t.is_completed && !t.is_deleted).length : 0})</span>
             </button>
             <button
               type="button"
@@ -987,7 +1129,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              By me <span className="hidden sm:inline ml-1 font-semibold">({user ? todos.filter(t => t.assigned_by === user.id && !t.is_completed && !t.is_deleted).length : 0})</span>
+              By me <span className="hidden sm:inline ml-1 font-semibold">({user ? todos.filter(t => isTaskAssignedByUser(t, user.id, user.email) && !t.is_completed && !t.is_deleted).length : 0})</span>
             </button>
             <button
               type="button"
@@ -1056,73 +1198,6 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           )}
         </div>
 
-        {/* AI Insights & Suggestions */}
-        {!loading && todos.length > 0 && (
-          <>
-            {suggestNextActions(todos).length > 0 && (
-              <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in bg-gradient-to-br from-blue/5 to-blue/2 border-blue/20 backdrop-blur-sm hover:shadow-elevated transition-all duration-300">
-                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                  🤖 AI Insights
-                </h3>
-                <div className="space-y-2">
-                  {suggestNextActions(todos).map((suggestion, idx) => (
-                    <p key={idx} className="text-xs text-muted-foreground leading-relaxed">
-                      {suggestion}
-                    </p>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Task Summary */}
-            {topPriorityTasks.length > 0 && (
-              <Card className="p-4 mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in bg-gradient-to-br from-primary/5 to-primary/2 border-primary/20 backdrop-blur-sm hover:shadow-elevated transition-all duration-300">
-                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2 text-primary">
-                  <ListTodo className="w-4 h-4" />
-                  Top Priority Tasks
-                </h3>
-                <div className="space-y-2">
-                  {topPriorityTasks.map((task, idx) => {
-                    const daysLeft = daysUntilDue(task.expected_completion_date || task.due_date);
-                    const isOverdue = daysLeft !== null && daysLeft < 0;
-                    const dueSoon = daysLeft !== null && daysLeft <= 3 && daysLeft >= 0;
-                    
-                    return (
-                      <div key={task.id} className="flex items-start gap-3 p-2 rounded-lg bg-white/50 dark:bg-slate-950/50 hover:bg-white/80 dark:hover:bg-slate-900/50 transition-colors">
-                        <span className="text-xs font-bold text-primary mt-1 min-w-fit">#{idx + 1}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium line-clamp-1">{task.title}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[task.priority]}`}>
-                              <Flag className="w-3 h-3 mr-1" />
-                              {task.priority}
-                            </Badge>
-                            {(task.expected_completion_date || task.due_date) && (
-                              <Badge 
-                                variant="outline" 
-                                className={`text-xs ${
-                                  isOverdue ? 'bg-destructive/20 text-destructive border-destructive/30' :
-                                  dueSoon ? 'bg-warning/20 text-warning border-warning/30' :
-                                  'bg-success/20 text-success border-success/30'
-                                }`}
-                              >
-                                <Calendar className="w-3 h-3 mr-1" />
-                                {isToday(task.expected_completion_date || task.due_date) ? 'Today' :
-                                 isOverdue ? `${Math.abs(daysLeft!)} days overdue` :
-                                 daysLeft === 0 ? 'Due today' :
-                                 `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            )}
-          </>
-        )}
 
         {/* Search & Filters */}
         <Card className="p-3 sm:p-4 mb-3 sm:mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 hover:shadow-elevated transition-all duration-300">
@@ -1294,14 +1369,22 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                     {/* Assigner / Assignee info tag */}
                     {(todo.assigned_to || todo.assigned_by) && (
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                        {todo.assigned_to === user?.id && todo.assigned_by && (
-                          <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30 font-medium">
-                            👤 Assigned by: {profileCache[todo.assigned_by]?.email || profileCache[todo.assigned_by]?.full_name || 'User'}
+                        {user && isTaskAssignedToUser(todo, user.id, user.email) && todo.assigned_by && (
+                          <Badge
+                            variant="outline"
+                            onClick={() => handleOpenUserModal(todo.assigned_by)}
+                            className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30 font-medium cursor-pointer hover:bg-blue-500/20 transition-colors flex items-center gap-1"
+                          >
+                            👤 Assigned by: <span className="font-bold underline underline-offset-2">{getDisplayName(todo.assigned_by)}</span>
                           </Badge>
                         )}
-                        {todo.assigned_by === user?.id && todo.assigned_to && (
-                          <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30 font-medium">
-                            👤 Assigned to: {profileCache[todo.assigned_to]?.email || profileCache[todo.assigned_to]?.full_name || 'User'}
+                        {user && isTaskAssignedByUser(todo, user.id, user.email) && todo.assigned_to && (
+                          <Badge
+                            variant="outline"
+                            onClick={() => handleOpenUserModal(todo.assigned_to)}
+                            className="text-xs bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30 font-medium cursor-pointer hover:bg-purple-500/20 transition-colors flex items-center gap-1"
+                          >
+                            👤 Assigned to: <span className="font-bold underline underline-offset-2">{getDisplayName(todo.assigned_to)}</span>
                           </Badge>
                         )}
                         {todo.assignment_status && (
@@ -1655,6 +1738,84 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* User Info Popover Modal */}
+      <Dialog open={!!userModalProfile} onOpenChange={(open) => !open && setUserModalProfile(null)}>
+        <DialogContent className="max-w-xs rounded-3xl border-border/50 p-5 shadow-elevated">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <User className="w-4 h-4 text-primary" /> User Details
+            </DialogTitle>
+          </DialogHeader>
+          {userModalProfile && (
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center gap-3 bg-muted/40 p-3 rounded-2xl border border-border/50">
+                <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-extrabold text-base">
+                  {userModalProfile.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-sm text-foreground truncate">{userModalProfile.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{userModalProfile.email}</p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full rounded-xl text-xs gap-1.5"
+                onClick={() => {
+                  navigator.clipboard.writeText(userModalProfile.email);
+                  toast({ title: 'Email Copied!', description: userModalProfile.email });
+                }}
+              >
+                <Copy className="w-3.5 h-3.5 text-primary" /> Copy Email Address
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* OTP Passcode Assignment Modal */}
+      <Dialog open={otpModalOpen} onOpenChange={(open) => !open && setOtpModalOpen(false)}>
+        <DialogContent className="max-w-sm rounded-3xl border-border/50 p-5 shadow-elevated">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-primary">
+              <KeyRound className="w-5 h-5 text-primary" /> Permission Required (3-Digit OTP)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-2.5">
+              <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-foreground leading-relaxed">
+                To assign a task to <span className="font-bold">{pendingAssignmentData?.targetName}</span> ({pendingAssignmentData?.targetEmail}) for the first time, please enter their <span className="font-bold">3-digit profile passcode</span>.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Enter 3-Digit Passcode</Label>
+              <Input
+                value={otpCodeInput}
+                onChange={(e) => setOtpCodeInput(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                placeholder="e.g. 742"
+                maxLength={3}
+                className="text-center font-mono text-2xl tracking-widest h-12 rounded-xl border-primary/40 focus:border-primary"
+              />
+              <p className="text-[11px] text-muted-foreground text-center">
+                Ask {pendingAssignmentData?.targetName} for their 3-digit OTP code found in their Profile Settings.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => setOtpModalOpen(false)} className="flex-1 rounded-xl text-xs">
+                Cancel
+              </Button>
+              <Button onClick={handleVerifyOtpAndSave} disabled={otpVerifying || otpCodeInput.length !== 3} className="flex-1 rounded-xl text-xs">
+                {otpVerifying ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                Verify & Assign
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
