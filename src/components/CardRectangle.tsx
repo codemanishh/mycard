@@ -24,82 +24,78 @@ export const CardRectangle = ({ card, onClick, index, expenses }: CardRectangleP
       onClick={() => onClick(card)}
       style={{ animationDelay: `${index * 0.05}s` }}
       className={cn(
-        "group relative rounded-2xl p-3.5 sm:p-4 transition-all duration-300 cursor-pointer overflow-hidden border shadow-card hover:shadow-elevated",
-        "bg-card/90 backdrop-blur-xl hover:-translate-y-1 active:scale-[0.99]",
+        "group relative rounded-2xl p-3 transition-all duration-300 cursor-pointer overflow-hidden border shadow-sm hover:shadow-md",
+        "bg-card/90 backdrop-blur-xl hover:-translate-y-0.5 active:scale-[0.99]",
         hasOverdue
-          ? "border-red-500/50 ring-2 ring-red-500/20"
+          ? "border-red-500/50 ring-1 ring-red-500/30"
           : "border-border/60 hover:border-primary/50"
       )}
     >
       {/* Decorative Top Accent Glow */}
       <div 
-        className="absolute top-0 left-0 right-0 h-1.5 opacity-80 group-hover:opacity-100 transition-opacity"
+        className="absolute top-0 left-0 right-0 h-1 opacity-80 group-hover:opacity-100 transition-opacity"
         style={{ backgroundColor: bankColor }}
       />
 
-      {/* Top Header: Bank Logo + Card Name & Bank Name + Status Badge */}
-      <div className="flex items-center justify-between gap-2.5 mb-2.5">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <BankLogo bankName={card.bankName} size="md" className="shadow-sm border border-border/40 shrink-0" />
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-foreground truncate leading-tight title-case">
-              {cleanCardTitle}
-            </h3>
-            <p className="text-xs text-muted-foreground truncate leading-tight">
-              {card.bankName}
-            </p>
+      {/* Unified Compact Div Container */}
+      <div className="flex flex-col gap-2">
+        {/* Header Row: Bank Logo + Title & Bank + Badge */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <BankLogo bankName={card.bankName} size="sm" className="shadow-xs border border-border/40 shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-bold text-foreground truncate leading-tight title-case">
+                {cleanCardTitle}
+              </h3>
+              <p className="text-[10px] text-muted-foreground truncate leading-tight">
+                {card.bankName}
+              </p>
+            </div>
           </div>
+
+          <Badge 
+            className={cn(
+              "text-[10px] px-2 py-0.5 font-extrabold rounded-full border shrink-0 transition-all",
+              hasOverdue 
+                ? "bg-red-600 text-white border-red-400 animate-pulse" 
+                : status.daysLeft <= 5 
+                  ? "bg-amber-500 text-white border-amber-300"
+                  : "bg-emerald-500 text-white border-emerald-300"
+            )}
+          >
+            {hasOverdue ? (
+              <span className="flex items-center gap-0.5">
+                <AlertTriangle className="w-3 h-3" /> {status.statusLabel}
+              </span>
+            ) : (
+              <span className="flex items-center gap-0.5">
+                <CheckCircle2 className="w-3 h-3" /> {status.statusLabel}
+              </span>
+            )}
+          </Badge>
         </div>
 
-        {/* Floating Status Pill Badge */}
-        <Badge 
-          className={cn(
-            "text-[10px] sm:text-xs px-2.5 py-0.5 font-extrabold rounded-full border shadow-sm shrink-0 transition-all",
-            hasOverdue 
-              ? "bg-red-600 text-white border-red-400 animate-pulse" 
-              : status.daysLeft <= 5 
-                ? "bg-amber-500 text-white border-amber-300"
-                : "bg-emerald-500 text-white border-emerald-300"
-          )}
-        >
-          {hasOverdue ? (
-            <span className="flex items-center gap-1">
-              <AlertTriangle className="w-3 h-3" /> {status.statusLabel}
-            </span>
-          ) : (
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> {status.statusLabel}
-            </span>
-          )}
-        </Badge>
-      </div>
-
-      {/* Middle Section: Clean Billed Breakdown Cards */}
-      <div className="grid grid-cols-2 gap-2 mt-2">
-        {/* Due / Overdue Amount Box (Bold Red) */}
-        <div className={cn(
-          "p-2 rounded-xl border transition-colors",
-          hasOverdue ? "bg-red-500/10 border-red-500/30" : "bg-muted/30 border-border/30"
-        )}>
-          <span className="text-[10px] font-semibold text-muted-foreground block uppercase tracking-wider mb-0.5">
-            {hasOverdue ? "Due / Overdue" : "Due Amount"}
-          </span>
-          <span className={cn(
-            "font-extrabold text-sm sm:text-base font-mono block",
-            hasOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+        {/* Breakdown Amounts Row (In-Line Compact Badges) */}
+        <div className="flex items-center gap-2 pt-1.5 border-t border-border/30 text-xs">
+          <div className={cn(
+            "flex-1 flex items-center justify-between px-2.5 py-1 rounded-lg border transition-colors",
+            hasOverdue ? "bg-red-500/10 border-red-500/30" : "bg-muted/30 border-border/30"
           )}>
-            ₹{status.overdueAmount.toLocaleString('en-IN')}
-          </span>
-        </div>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase">Due</span>
+            <span className={cn(
+              "font-extrabold text-xs font-mono ml-1",
+              hasOverdue ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+            )}>
+              ₹{status.overdueAmount.toLocaleString('en-IN')}
+            </span>
+          </div>
 
-        {/* Current Month Bill Box (Green) */}
-        <div className="p-2 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/20 border border-emerald-500/20">
-          <span className="text-[10px] font-semibold text-muted-foreground block uppercase tracking-wider mb-0.5">
-            Current Month
-          </span>
-          <span className="font-bold text-sm sm:text-base font-mono text-emerald-600 dark:text-emerald-400 block">
-            ₹{status.currentAmount.toLocaleString('en-IN')}
-          </span>
+          <div className="flex-1 flex items-center justify-between px-2.5 py-1 rounded-lg bg-emerald-500/10 dark:bg-emerald-950/20 border border-emerald-500/20">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase">Current</span>
+            <span className="font-bold text-xs font-mono text-emerald-600 dark:text-emerald-400 ml-1">
+              ₹{status.currentAmount.toLocaleString('en-IN')}
+            </span>
+          </div>
         </div>
       </div>
     </div>

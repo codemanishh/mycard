@@ -357,12 +357,11 @@ const Index = () => {
           bank_name: cardData.bankName,
           billing_date: cardData.billingDate,
           current_bill: cardData.currentBill,
-          overdue_amount: cardData.overdueAmount || 0,
           limit_amount: cardData.limitAmount,
           limit_type: cardData.limitType,
           status: cardData.status,
           notes: cardData.notes,
-        } as any)
+        })
         .eq('id', editingCard.id);
 
       if (!error) {
@@ -378,12 +377,11 @@ const Index = () => {
           bank_name: cardData.bankName,
           billing_date: cardData.billingDate,
           current_bill: cardData.currentBill,
-          overdue_amount: cardData.overdueAmount || 0,
           limit_amount: cardData.limitAmount,
           limit_type: cardData.limitType,
           status: cardData.status,
           notes: cardData.notes,
-        } as any)
+        })
         .select()
         .single();
 
@@ -400,17 +398,27 @@ const Index = () => {
 
   const handleClearOverdue = async (card: CreditCardType) => {
     if (!user) return;
+    const cardStatus = getCardBillStatus(card, expenses);
+    const dueAmountToPay = cardStatus.overdueAmount;
+    const newCurrentBill = Math.max(0, card.currentBill - dueAmountToPay);
+
     const { error } = await supabase
       .from('credit_cards')
-      .update({ overdue_amount: 0 } as any)
+      .update({ current_bill: newCurrentBill })
       .eq('id', card.id);
 
     if (!error) {
-      setCards(cards.map(c => c.id === card.id ? { ...c, overdueAmount: 0 } : c));
-      setSelectedCard(prev => prev && prev.id === card.id ? { ...prev, overdueAmount: 0 } : prev);
+      setCards(cards.map(c => c.id === card.id ? { ...c, currentBill: newCurrentBill, overdueAmount: 0 } : c));
+      setSelectedCard(prev => prev && prev.id === card.id ? { ...prev, currentBill: newCurrentBill, overdueAmount: 0 } : prev);
       toast({
-        title: 'Overdue Cleared! 🎉',
-        description: `Overdue bill for ${card.cardName} has been marked as paid.`,
+        title: 'Statement Bill Paid! 🎉',
+        description: `Paid ₹${dueAmountToPay.toLocaleString('en-IN')} due bill for ${card.cardName}.`,
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update bill.',
+        variant: 'destructive',
       });
     }
   };
@@ -419,7 +427,7 @@ const Index = () => {
     if (!user) return;
     const { error } = await supabase
       .from('credit_cards')
-      .update({ current_bill: 0, overdue_amount: 0 } as any)
+      .update({ current_bill: 0 })
       .eq('id', card.id);
 
     if (!error) {
@@ -428,6 +436,12 @@ const Index = () => {
       toast({
         title: 'Total Bill Cleared! 🎉',
         description: `All bills for ${card.cardName} have been marked as paid.`,
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update bill.',
+        variant: 'destructive',
       });
     }
   };

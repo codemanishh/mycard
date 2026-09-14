@@ -41,8 +41,11 @@ export const getCardBillStatus = (card: CreditCard, expenses?: Expense[]): CardB
   const diffTime = nextBillingDate.getTime() - today.getTime();
   const daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-  let overdueAmount = Math.max(0, card.overdueAmount || 0);
+  let overdueAmount = 0;
   let currentAmount = Math.max(0, card.currentBill || 0);
+
+  // If user explicitly marked overdue as paid (card.overdueAmount === 0), honor it!
+  const isExplicitlyPaid = card.overdueAmount === 0;
 
   // Calculate dynamic cycle breakdown if expenses exist
   if (expenses && expenses.length > 0) {
@@ -81,17 +84,20 @@ export const getCardBillStatus = (card: CreditCard, expenses?: Expense[]): CardB
         }
       });
 
-      // Apply computed breakdown if overdueAmount was not explicitly cleared
-      if ((card.overdueAmount === undefined || card.overdueAmount === 0) && calcOverdue > 0) {
+      if (!isExplicitlyPaid && calcOverdue > 0) {
         overdueAmount = calcOverdue;
-        currentAmount = calcCurrent;
+        currentAmount = Math.max(calcCurrent, (card.currentBill || 0) - calcOverdue);
+      } else {
+        currentAmount = Math.max(0, card.currentBill || 0);
       }
     }
   }
 
-  // Fallback if no expenses match but today >= billingDate and card has currentBill
-  if (overdueAmount === 0 && currentDay >= card.billingDate && card.currentBill > 0) {
-    if (card.overdueAmount === undefined) {
+  // Fallback: If no card expenses were found, but card.overdueAmount > 0 OR (today >= billingDate and card.currentBill > 0)
+  if (overdueAmount === 0 && !isExplicitlyPaid) {
+    if (card.overdueAmount && card.overdueAmount > 0) {
+      overdueAmount = card.overdueAmount;
+    } else if (currentDay >= card.billingDate && (card.currentBill || 0) > 0) {
       overdueAmount = card.currentBill;
       currentAmount = 0;
     }
