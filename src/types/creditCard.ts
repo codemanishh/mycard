@@ -31,7 +31,7 @@ export const getCardBillStatus = (card: CreditCard): CardBillStatus => {
   const currentMonth = today.getMonth();
   const currentYear = today.getFullYear();
 
-  // Next statement / billing date calculation
+  // Days left calculation until next statement / billing date
   let nextBillingDate = new Date(currentYear, currentMonth, card.billingDate);
   if (currentDay >= card.billingDate) {
     nextBillingDate = new Date(currentYear, currentMonth + 1, card.billingDate);
@@ -39,61 +39,31 @@ export const getCardBillStatus = (card: CreditCard): CardBillStatus => {
   const diffTime = nextBillingDate.getTime() - today.getTime();
   const daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-  const explicitOverdue = Math.max(0, card.overdueAmount || 0);
-  const currentBill = Math.max(0, card.currentBill || 0);
-  const totalUnpaid = explicitOverdue + currentBill;
+  const overdueAmount = Math.max(0, card.overdueAmount || 0);
+  const currentAmount = Math.max(0, card.currentBill || 0);
 
-  // Case A: Bill is 100% PAID / CLEARED (totalUnpaid === 0)
-  if (totalUnpaid === 0) {
-    return {
-      isOverdue: false,
-      overdueDays: 0,
-      daysLeft: daysLeft === 0 ? 30 : daysLeft,
-      overdueAmount: 0,
-      currentAmount: 0,
-      totalDue: 0,
-      statusLabel: `${daysLeft === 0 ? 30 : daysLeft}d left`,
-    };
-  }
-
-  // Case B: Explicit overdue amount exists
-  if (explicitOverdue > 0) {
-    const overdueDays = Math.max(1, currentDay >= card.billingDate ? currentDay - card.billingDate : 1);
+  // Card has Overdue / Due bill ONLY if overdueAmount > 0
+  if (overdueAmount > 0) {
+    const overdueDays = currentDay >= card.billingDate ? currentDay - card.billingDate : 0;
     return {
       isOverdue: true,
       overdueDays,
       daysLeft,
-      overdueAmount: explicitOverdue,
-      currentAmount: currentBill,
-      totalDue: totalUnpaid,
-      statusLabel: `${overdueDays}d Overdue`,
+      overdueAmount,
+      currentAmount,
+      totalDue: overdueAmount + currentAmount,
+      statusLabel: overdueDays === 0 ? 'Due Today' : `${overdueDays}d Overdue`,
     };
   }
 
-  // Case C: Today is ON or PAST the billing date (currentDay >= card.billingDate) with unpaid bill
-  if (currentDay >= card.billingDate && currentBill > 0) {
-    const overdueDays = currentDay - card.billingDate;
-    const isDueToday = overdueDays === 0;
-
-    return {
-      isOverdue: true,
-      overdueDays,
-      daysLeft,
-      overdueAmount: currentBill,
-      currentAmount: 0,
-      totalDue: currentBill,
-      statusLabel: isDueToday ? 'Due Today' : `${overdueDays}d Overdue`,
-    };
-  }
-
-  // Case D: Today is BEFORE the billing date (currentDay < card.billingDate) with unpaid bill
+  // No overdue bill: currentAmount is Current Month Bill (spending in active cycle)
   return {
     isOverdue: false,
     overdueDays: 0,
     daysLeft,
     overdueAmount: 0,
-    currentAmount: currentBill,
-    totalDue: currentBill,
+    currentAmount,
+    totalDue: currentAmount,
     statusLabel: daysLeft === 0 ? 'Due Today' : `${daysLeft}d left`,
   };
 };
