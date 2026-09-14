@@ -39,57 +39,31 @@ export const getCardBillStatus = (card: CreditCard): CardBillStatus => {
   const diffTime = nextBillingDate.getTime() - today.getTime();
   const daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-  const explicitOverdue = Math.max(0, card.overdueAmount || 0);
+  const overdueAmount = Math.max(0, card.overdueAmount || 0);
+  const currentAmount = Math.max(0, card.currentBill || 0);
 
-  // If explicit overdue amount exists
-  if (explicitOverdue > 0) {
+  // Card is overdue ONLY if overdueAmount > 0
+  if (overdueAmount > 0) {
     const overdueDays = Math.max(1, currentDay >= card.billingDate ? currentDay - card.billingDate : 1);
     return {
       isOverdue: true,
       overdueDays,
       daysLeft,
-      overdueAmount: explicitOverdue,
-      currentAmount: card.currentBill,
-      totalDue: explicitOverdue + card.currentBill,
+      overdueAmount,
+      currentAmount,
+      totalDue: overdueAmount + currentAmount,
       statusLabel: `${overdueDays}d Overdue`,
     };
   }
 
-  // Automatic overdue check: if today > billingDate and card.currentBill > 0
-  if (currentDay > card.billingDate && card.currentBill > 0) {
-    const overdueDays = currentDay - card.billingDate;
-    return {
-      isOverdue: true,
-      overdueDays,
-      daysLeft,
-      overdueAmount: card.currentBill,
-      currentAmount: 0,
-      totalDue: card.currentBill,
-      statusLabel: overdueDays === 1 ? '1d Overdue' : `${overdueDays}d Overdue`,
-    };
-  }
-
-  // Billing date is today with unpaid bill
-  if (currentDay === card.billingDate && card.currentBill > 0) {
-    return {
-      isOverdue: true,
-      overdueDays: 0,
-      daysLeft: 0,
-      overdueAmount: card.currentBill,
-      currentAmount: 0,
-      totalDue: card.currentBill,
-      statusLabel: 'Due Today',
-    };
-  }
-
-  // Bill is cleared or next billing cycle
+  // Otherwise, currentAmount is Current Month Bill
   return {
     isOverdue: false,
     overdueDays: 0,
     daysLeft,
     overdueAmount: 0,
-    currentAmount: card.currentBill,
-    totalDue: card.currentBill,
+    currentAmount,
+    totalDue: currentAmount,
     statusLabel: daysLeft === 0 ? 'Due Today' : `${daysLeft}d left`,
   };
 };
