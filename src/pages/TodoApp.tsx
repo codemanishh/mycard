@@ -454,38 +454,82 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       setAssigneeProfile(null);
       return null;
     }
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (profileCache[cleanEmail]) {
+      const cached = profileCache[cleanEmail];
+      setAssigneeProfile(cached);
+      return cached;
+    }
+
     try {
-      const { data, error } = await supabase
+      // 1. Try public_profiles_view
+      const { data: viewData } = await supabase
         .from('public_profiles_view')
         .select('user_id, id, email, full_name, avatar_url')
-        .ilike('email', email.trim())
+        .ilike('email', cleanEmail)
         .limit(1)
         .maybeSingle();
 
-      if (!error && data) {
+      if (viewData) {
         const normalized = {
-          id: (data as any).user_id || (data as any).id,
-          user_id: (data as any).user_id,
-          profile_id: (data as any).id,
-          email: (data as any).email,
-          full_name: (data as any).full_name,
-          avatar_url: (data as any).avatar_url,
+          id: (viewData as any).user_id || (viewData as any).id,
+          user_id: (viewData as any).user_id || (viewData as any).id,
+          profile_id: (viewData as any).id,
+          email: (viewData as any).email || cleanEmail,
+          full_name: (viewData as any).full_name,
+          avatar_url: (viewData as any).avatar_url,
         };
         setAssigneeProfile(normalized);
         setProfileCache(prev => ({
           ...prev,
           [normalized.user_id]: normalized,
-          [normalized.profile_id]: normalized,
-          [normalized.email.toLowerCase()]: normalized,
+          [cleanEmail]: normalized,
         }));
         return normalized;
       }
-      setAssigneeProfile(null);
-      return null;
+
+      // 2. Try profiles table
+      const { data: profData } = await supabase
+        .from('profiles')
+        .select('user_id, id, email, full_name')
+        .ilike('email', cleanEmail)
+        .limit(1)
+        .maybeSingle();
+
+      if (profData) {
+        const normalized = {
+          id: (profData as any).user_id || (profData as any).id,
+          user_id: (profData as any).user_id || (profData as any).id,
+          profile_id: (profData as any).id,
+          email: (profData as any).email || cleanEmail,
+          full_name: (profData as any).full_name,
+        };
+        setAssigneeProfile(normalized);
+        setProfileCache(prev => ({
+          ...prev,
+          [normalized.user_id]: normalized,
+          [cleanEmail]: normalized,
+        }));
+        return normalized;
+      }
     } catch (err: any) {
-      setAssigneeProfile(null);
-      return null;
+      console.warn('Profile lookup error:', err);
     }
+
+    // 3. Fallback synthetic profile for any valid email
+    const synthetic = {
+      id: cleanEmail,
+      user_id: cleanEmail,
+      email: cleanEmail,
+      full_name: cleanEmail.split('@')[0],
+    };
+    setAssigneeProfile(synthetic);
+    setProfileCache(prev => ({
+      ...prev,
+      [cleanEmail]: synthetic,
+    }));
+    return synthetic;
   };
 
   // Profile search/autocomplete (returns up to 5 matches)
@@ -498,26 +542,41 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       setProfileSuggestions([]);
       return;
     }
+    const cleanQ = q.trim().toLowerCase();
     setProfileSearchLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('public_profiles_view')
-        .select('user_id, id, email, full_name, avatar_url')
-        .ilike('email', `%${q}%`)
-        .limit(5);
-      setProfileSearchLoading(false);
-      if (error) {
-        setProfileSuggestions([]);
-        return;
+      const [viewRes, profRes] = await Promise.all([
+        supabase
+          .from('public_profiles_view')
+          .select('user_id, id, email, full_name, avatar_url')
+          .ilike('email', `%${cleanQ}%`)
+          .limit(5),
+        supabase
+          .from('profiles')
+          .select('user_id, id, email, full_name')
+          .ilike('email', `%${cleanQ}%`)
+          .limit(5),
+      ]);
+
+      const combinedRaw = [...(viewRes.data || []), ...(profRes.data || [])];
+      const seen = new Set<string>();
+      const results: Array<{ id: string; user_id?: string; email?: string; full_name?: string }> = [];
+
+      for (const d of combinedRaw) {
+        const email = (d as any).email || '';
+        if (email && !seen.has(email.toLowerCase())) {
+          seen.add(email.toLowerCase());
+          results.push({
+            id: (d as any).user_id || (d as any).id,
+            user_id: (d as any).user_id || (d as any).id,
+            email: email,
+            full_name: (d as any).full_name,
+          });
+        }
       }
-      setProfileSuggestions((data as any || []).map((d: any) => ({
-        user_id: d.user_id,
-        id: d.user_id || d.id, // Always auth user UUID!
-        profile_id: d.id,
-        email: d.email,
-        full_name: d.full_name,
-        avatar_url: d.avatar_url
-      })));
+
+      setProfileSearchLoading(false);
+      setProfileSuggestions(results);
     } catch (err: any) {
       setProfileSearchLoading(false);
       setProfileSuggestions([]);
