@@ -1,6 +1,7 @@
 import { CreditCard as CreditCardType } from '@/types/creditCard';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { cn } from '@/lib/utils';
+import { AlertTriangle } from 'lucide-react';
 
 interface CardCircleProps {
   card: CreditCardType;
@@ -29,66 +30,89 @@ export const CardCircle = ({ card, onClick, index }: CardCircleProps) => {
   const isUrgent = card.currentBill > 0 && daysLeft <= 2;
   const bankColor = getBankColor(card.bankName);
 
+  const utilizationPercent = card.limitAmount > 0 
+    ? Math.min(100, Math.round((card.currentBill / card.limitAmount) * 100))
+    : 0;
+
   return (
     <div 
-      className="flex flex-col items-center gap-1.5 md:gap-2 animate-fade-in group" 
-      style={{ animationDelay: `${index * 0.06}s` }}
+      className="flex flex-col items-center gap-2 animate-fade-in group cursor-pointer" 
+      style={{ animationDelay: `${index * 0.05}s` }}
+      onClick={() => onClick(card)}
     >
-      <button
-        type="button"
-        onClick={() => onClick(card)}
-        className={cn(
-          "relative transition-all duration-300 transform group-hover:-translate-y-1 active:scale-95 focus:outline-none",
-          card.status === 'blocked' && "opacity-50 saturate-50"
-        )}
-      >
-        {/* Soft Ambient Glow Effect */}
+      <div className={cn(
+        "relative transition-all duration-300 transform group-hover:-translate-y-1.5 group-hover:scale-105 active:scale-95",
+        card.status === 'blocked' && "opacity-50 saturate-50"
+      )}>
+        {/* Soft Ambient Halo Glow */}
         <div 
-          className="absolute -inset-1 rounded-2xl md:rounded-3xl blur-md opacity-30 group-hover:opacity-75 transition-opacity duration-300"
+          className="absolute -inset-1.5 rounded-full blur-lg opacity-40 group-hover:opacity-90 transition-opacity duration-300"
           style={{ backgroundColor: bankColor }}
         />
         
-        {/* Main Card Icon Box */}
+        {/* Outer Circular Ring with Metallic Gradient Border */}
         <div
           className={cn(
-            "relative w-16 h-16 md:w-20 md:h-20 rounded-2xl md:rounded-3xl flex flex-col items-center justify-center p-2",
-            "transition-all duration-300 bg-card border-2 shadow-elevated",
+            "relative w-18 h-18 sm:w-20 sm:h-20 md:w-22 md:h-22 rounded-full flex flex-col items-center justify-center p-2.5",
+            "bg-gradient-to-br from-card via-card to-secondary/60 shadow-elevated transition-all duration-300 border-2",
             isUrgent 
               ? "border-red-500 ring-4 ring-red-500/30 animate-pulse" 
               : isAlert 
                 ? "border-amber-500 ring-4 ring-amber-500/20" 
-                : "border-emerald-500/60 ring-2 ring-emerald-500/10 hover:border-emerald-500"
+                : "border-emerald-500/60 hover:border-emerald-500 ring-2 ring-emerald-500/10"
           )}
         >
-          <BankLogo bankName={card.bankName} size="md" className="shadow-sm" />
-          <span className="text-[9px] md:text-[10px] font-bold text-foreground truncate max-w-full mt-1">
+          {/* Bank Logo */}
+          <BankLogo bankName={card.bankName} size="md" className="shadow-md border border-white/20" />
+          
+          {/* Card Short Name */}
+          <span className="text-[10px] sm:text-[11px] font-extrabold text-foreground truncate max-w-full mt-1.5 tracking-tight text-center leading-none">
             {card.cardName}
           </span>
+
+          {/* Mini Gold Chip Indicator on the circle */}
+          <div className="absolute left-1 top-1/2 -translate-y-1/2 w-2 h-3 rounded-[2px] bg-gradient-to-br from-amber-200 to-yellow-600 border border-amber-300/40 opacity-70 hidden sm:block" />
         </div>
         
-        {/* Countdown Badge */}
+        {/* Floating Countdown Badge */}
         <span className={cn(
-          "absolute -top-1.5 -right-1.5 md:-top-2 md:-right-2 px-1.5 py-0.5 rounded-full flex items-center justify-center text-[9px] md:text-[10px] font-extrabold shadow-lg z-10 border border-white/40",
+          "absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 px-2 py-0.5 rounded-full flex items-center justify-center text-[10px] sm:text-[11px] font-extrabold shadow-lg z-10 border border-white/40 tracking-tight",
           isUrgent 
             ? "bg-red-600 text-white animate-bounce" 
             : isAlert 
               ? "bg-amber-500 text-white" 
               : "bg-emerald-500 text-white"
         )}>
-          {daysLeft}d
+          {isUrgent ? (
+            <span className="flex items-center gap-0.5">
+              <AlertTriangle className="w-2.5 h-2.5" /> {daysLeft}d
+            </span>
+          ) : (
+            `${daysLeft}d left`
+          )}
         </span>
-      </button>
+
+        {/* Utilization Ring / Dot */}
+        {utilizationPercent > 0 && (
+          <span className={cn(
+            "absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.2 text-[9px] font-bold rounded-full border border-white/30 text-white shadow-sm",
+            utilizationPercent > 75 ? "bg-red-500" : "bg-slate-800/90"
+          )}>
+            {utilizationPercent}%
+          </span>
+        )}
+      </div>
       
-      {/* Label & Bill details */}
-      <div className="text-center space-y-0.5 max-w-[80px] md:max-w-[100px]">
-        <p className="text-[11px] md:text-xs font-semibold text-foreground leading-tight truncate">
+      {/* Label & Bill Amount */}
+      <div className="text-center space-y-0.5 max-w-[90px] sm:max-w-[110px]">
+        <p className="text-[11px] sm:text-xs font-bold text-foreground leading-tight truncate">
           {card.bankName}
         </p>
         <p className={cn(
-          "text-[10px] md:text-xs font-bold font-mono",
+          "text-[11px] sm:text-xs font-extrabold font-mono",
           card.currentBill > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
         )}>
-          ₹{card.currentBill > 0 ? card.currentBill.toLocaleString('en-IN') : '0'}
+          ₹{card.currentBill > 0 ? card.currentBill.toLocaleString('en-IN') : '0.00'}
         </p>
       </div>
     </div>

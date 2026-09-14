@@ -19,7 +19,7 @@ import { ProfileDialog } from '@/components/ProfileDialog';
 import { VoicePaymentDialog } from '@/components/VoicePaymentDialog';
 import TodoApp from '@/pages/TodoApp';
 import { Button } from '@/components/ui/button';
-import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic } from 'lucide-react';
+import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic, CircleDot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -46,7 +46,7 @@ const Index = () => {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'circles' | 'carousel'>('grid');
+  const [viewMode, setViewMode] = useState<'circles' | 'grid' | 'carousel'>('circles');
   const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
@@ -981,8 +981,21 @@ const Index = () => {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                {/* View Switcher: Grid vs Circles vs Deck Slider */}
+                {/* View Switcher: Circles vs Grid vs Deck */}
                 <div className="flex items-center bg-muted/60 p-1 rounded-xl border border-border/40 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('circles')}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
+                      viewMode === 'circles'
+                        ? "bg-background text-foreground shadow-sm font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <CircleDot className="w-3.5 h-3.5 text-primary" />
+                    <span>Circles</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('grid')}
@@ -995,19 +1008,6 @@ const Index = () => {
                   >
                     <Grid3x3 className="w-3.5 h-3.5" />
                     <span>Card Grid</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('circles')}
-                    className={cn(
-                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
-                      viewMode === 'circles'
-                        ? "bg-background text-foreground shadow-sm font-semibold"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <User className="w-3.5 h-3.5" />
-                    <span>Circles</span>
                   </button>
                   <button
                     type="button"
@@ -1071,6 +1071,34 @@ const Index = () => {
                   Add Your First Card
                 </Button>
               </Card>
+            ) : viewMode === 'circles' ? (
+              /* CIRCLES VIEW (DEFAULT) */
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4 sm:gap-6 justify-items-center pt-2">
+                {sortedCards.map((card, index) => (
+                  <CardCircle
+                    key={card.id}
+                    card={card}
+                    onClick={handleCardClick}
+                    index={index}
+                  />
+                ))}
+                {/* Add Card Quick Circle Button */}
+                <div 
+                  onClick={() => {
+                    setEditingCard(null);
+                    setDialogOpen(true);
+                  }}
+                  className="flex flex-col items-center gap-2 animate-fade-in cursor-pointer group"
+                >
+                  <div className="w-18 h-18 sm:w-20 sm:h-20 md:w-22 md:h-22 rounded-full border-2 border-dashed border-primary/50 group-hover:border-primary bg-primary/5 group-hover:bg-primary/10 transition-all flex flex-col items-center justify-center text-primary shadow-sm group-hover:scale-105 active:scale-95">
+                    <Plus className="w-6 h-6 md:w-7 md:h-7" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[11px] sm:text-xs font-bold text-primary">Add Card</p>
+                    <p className="text-[9px] text-muted-foreground">New credit card</p>
+                  </div>
+                </div>
+              </div>
             ) : viewMode === 'grid' ? (
               /* GRID VIEW: 3D Physical Cards */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6 pt-2">
