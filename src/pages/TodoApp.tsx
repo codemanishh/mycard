@@ -1477,14 +1477,6 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           </div>
         )}
 
-        {/* FAB */}
-        <Button
-          onClick={() => setDialogOpen(true)}
-          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-elevated hover:scale-110 transition-transform"
-          size="icon"
-        >
-          <Plus className="w-6 h-6" />
-        </Button>
       </main>
 
       {/* Add/Edit Dialog */}
@@ -1817,7 +1809,15 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+      {/* Floating Action Button (FAB) */}
+      <Button
+        onClick={() => setDialogOpen(true)}
+        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-2xl bg-primary text-primary-foreground hover:scale-110 active:scale-95 transition-all duration-300 flex items-center justify-center border-2 border-white/30"
+        size="icon"
+        title="Add Task"
+      >
+        <Plus className="w-7 h-7 text-white" />
+      </Button>
     </div>
   );
 };

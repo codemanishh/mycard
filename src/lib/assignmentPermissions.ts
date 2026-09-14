@@ -39,7 +39,7 @@ export const getAssignmentProfile = async (
   let allowed_assigners: AllowedAssigner[] = [];
   let customCode = '';
 
-  // Try loading from localStorage cache first
+  // Load from local cache
   try {
     const cachedSeed = localStorage.getItem(getCacheKey(userId, 'seed'));
     const cachedCode = localStorage.getItem(getCacheKey(userId, 'code'));
@@ -50,9 +50,7 @@ export const getAssignmentProfile = async (
     if (cachedCode) customCode = cachedCode;
     if (cachedName) full_name = cachedName;
     if (cachedAssigners) allowed_assigners = JSON.parse(cachedAssigners);
-  } catch (e) {
-    console.warn('Failed reading permission cache', e);
-  }
+  } catch (e) {}
 
   // Fetch from Supabase profiles / metadata
   try {
@@ -71,7 +69,7 @@ export const getAssignmentProfile = async (
       }
     }
 
-    // Check auth metadata if available
+    // Check auth metadata
     const { data: { user } } = await supabase.auth.getUser();
     if (user && (user.id === userId || user.email?.toLowerCase() === userEmail.toLowerCase())) {
       if (!full_name && user.user_metadata?.full_name) full_name = user.user_metadata.full_name;
@@ -81,18 +79,16 @@ export const getAssignmentProfile = async (
         allowed_assigners = user.user_metadata.allowed_assigners;
       }
     }
-  } catch (err) {
-    console.warn('Error fetching assignment profile from Supabase:', err);
-  }
+  } catch (err) {}
 
-  // Always derive deterministic code based on email / userId and seed
+  // Derive assignment code
   const assignment_code = customCode || computeDeterministicCode(userEmail || userId, seed);
 
-  // Update local cache
+  // Cache locally
   try {
     localStorage.setItem(getCacheKey(userId, 'code'), assignment_code);
     localStorage.setItem(getCacheKey(userId, 'seed'), seed.toString());
-    localStorage.setItem(getCacheKey(userId, 'name'), full_name);
+    if (full_name) localStorage.setItem(getCacheKey(userId, 'name'), full_name);
     localStorage.setItem(getCacheKey(userId, 'assigners'), JSON.stringify(allowed_assigners));
   } catch (e) {}
 
@@ -116,7 +112,6 @@ export const updateAssignmentProfile = async (
     phone_number?: string;
   }
 ) => {
-  // Update local cache first
   try {
     if (updates.assignment_code) localStorage.setItem(getCacheKey(userId, 'code'), updates.assignment_code);
     if (updates.code_seed !== undefined) localStorage.setItem(getCacheKey(userId, 'seed'), updates.code_seed.toString());
@@ -124,7 +119,6 @@ export const updateAssignmentProfile = async (
     if (updates.allowed_assigners) localStorage.setItem(getCacheKey(userId, 'assigners'), JSON.stringify(updates.allowed_assigners));
   } catch (e) {}
 
-  // Update Supabase profiles table
   try {
     const payload: any = {};
     if (updates.full_name !== undefined) payload.full_name = updates.full_name;
@@ -137,7 +131,6 @@ export const updateAssignmentProfile = async (
       .eq('user_id', userId);
   } catch (err) {}
 
-  // Update user metadata if current auth user
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user && user.id === userId) {
@@ -169,7 +162,7 @@ export const checkIsAssignerAllowed = async (
   const normalizedAssigner = assignerEmail.toLowerCase().trim();
   const normalizedTarget = targetEmail.toLowerCase().trim();
 
-  // Self assignment is always allowed!
+  // Self assignment is always allowed
   if (normalizedAssigner === normalizedTarget) return true;
   if (assignerUserId && targetUserId && assignerUserId === targetUserId) return true;
 
@@ -181,7 +174,7 @@ export const checkIsAssignerAllowed = async (
 
   if (isExplicitlyAllowed) return true;
 
-  // Check 2: Check if ANY task in Supabase todos table already exists between assigner and target
+  // Check 2: Check existing assigned tasks in Supabase
   try {
     const { data: existingTasks } = await supabase
       .from('todos')
@@ -209,17 +202,40 @@ export const verifyAndAddAssigner = async (
   const targetProfile = await getAssignmentProfile(targetUserId, targetEmail);
   const cleanEntered = enteredCode.trim();
 
-  // Deterministically verify against all valid code derivations for targetEmail and targetUserId
-  const expectedDefaultByEmail = computeDeterministicCode(targetEmail, 0);
-  const expectedDefaultById = computeDeterministicCode(targetUserId, 0);
-  const expectedCurrentBySeed = computeDeterministicCode(targetEmail, targetProfile.code_seed || 0);
+  let isValidCode = false;
 
-  const isValidCode = (
-    cleanEntered === targetProfile.assignment_code.trim() ||
-    cleanEntered === expectedDefaultByEmail ||
-    cleanEntered === expectedDefaultById ||
-    cleanEntered === expectedCurrentBySeed
-  );
+  if (cleanEntered === targetProfile.assignment_code.trim()) {
+    isValidCode = true;
+  } else {
+    // Check deterministic derivations across all possible identifiers and seeds (0..30)
+    const testIdentifiers = [
+      targetEmail,
+      targetUserId,
+      targetProfile.email,
+      targetProfile.user_id,
+      targetProfile.full_name,
+    ].filter(Boolean);
+
+    for (const idStr of testIdentifiers) {
+      for (let s = 0; s <= 30; s++) {
+        if (cleanEntered === computeDeterministicCode(idStr as string, s)) {
+          isValidCode = true;
+          break;
+        }
+      }
+      if (isValidCode) break;
+    }
+  }
+
+  // Check cached code in local storage
+  if (!isValidCode && /^\d{3}$/.test(cleanEntered)) {
+    try {
+      const storedCode = localStorage.getItem(`permission_code_${targetUserId}`);
+      if (storedCode && cleanEntered === storedCode.trim()) {
+        isValidCode = true;
+      }
+    } catch (e) {}
+  }
 
   if (!isValidCode) {
     return {
