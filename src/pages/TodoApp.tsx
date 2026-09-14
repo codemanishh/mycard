@@ -1809,6 +1809,8 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
             </div>
           </div>
         </DialogContent>
+      </Dialog>
+
       {/* Floating Action Button (FAB) */}
       <Button
         onClick={() => setDialogOpen(true)}
