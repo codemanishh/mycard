@@ -84,11 +84,12 @@ export const getCardBillStatus = (card: CreditCard, expenses?: Expense[]): CardB
         }
       });
 
-      if (!isExplicitlyPaid && calcOverdue > 0) {
+      if (!isExplicitlyPaid) {
         overdueAmount = calcOverdue;
-        currentAmount = Math.max(calcCurrent, (card.currentBill || 0) - calcOverdue);
+        currentAmount = calcCurrent;
       } else {
-        currentAmount = Math.max(0, card.currentBill || 0);
+        overdueAmount = 0;
+        currentAmount = calcCurrent;
       }
     }
   }

@@ -46,7 +46,7 @@ const Index = () => {
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
-  const [viewMode, setViewMode] = useState<'circles' | 'grid' | 'carousel'>('circles');
+  const [viewMode, setViewMode] = useState<'circles' | 'grid'>('circles');
   const [selectedCard, setSelectedCard] = useState<CreditCardType | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
@@ -1004,19 +1004,6 @@ const Index = () => {
                     <Grid3x3 className="w-3.5 h-3.5" />
                     <span>Card Grid</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('carousel')}
-                    className={cn(
-                      "px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5",
-                      viewMode === 'carousel'
-                        ? "bg-background text-foreground shadow-sm font-semibold"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>Deck</span>
-                  </button>
                 </div>
 
                 {/* Sort Options */}
@@ -1079,7 +1066,7 @@ const Index = () => {
                   />
                 ))}
               </div>
-            ) : viewMode === 'grid' ? (
+            ) : (
               /* GRID VIEW: 3D Physical Cards */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6 pt-2">
                 {sortedCards.map((card) => (
@@ -1092,52 +1079,6 @@ const Index = () => {
                     expenses={expenses}
                   />
                 ))}
-              </div>
-            ) : (
-              /* CAROUSEL DECK VIEW */
-              <div className="relative pt-2">
-                <Carousel 
-                  opts={{
-                    align: "center",
-                    loop: false,
-                  }}
-                  orientation="vertical"
-                  className="w-full max-w-xl mx-auto"
-                >
-                  <CarouselContent className="-mt-4 h-[620px]">
-                    {sortedCards.map((card, index) => (
-                      <CarouselItem key={card.id} className="pt-4">
-                        <div className="p-1 animate-fade-in" style={{ animationDelay: `${index * 100}ms` }}>
-                          <div className="mb-3 text-center">
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs">
-                              Card {index + 1} of {cards.length}
-                            </span>
-                          </div>
-                          <CreditCardItem
-                            card={card}
-                            onEdit={handleEditCard}
-                            onDelete={handleDeleteCard}
-                            onAddExpense={handleQuickExpenseFromCard}
-                            expenses={expenses}
-                          />
-                          {card.currentBill > 0 && (
-                            <Button
-                              onClick={() => handleSendWhatsAppReminder(card)}
-                              variant="outline"
-                              size="sm"
-                              className="w-full mt-2 rounded-xl border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
-                            >
-                              <MessageCircle className="w-4 h-4 mr-2" />
-                              Send WhatsApp Reminder
-                            </Button>
-                          )}
-                        </div>
-                      </CarouselItem>
-                    ))}
-                  </CarouselContent>
-                  <CarouselPrevious className="top-0" />
-                  <CarouselNext className="bottom-0" />
-                </Carousel>
               </div>
             )}
           </TabsContent>
