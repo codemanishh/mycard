@@ -15,9 +15,8 @@ import { LendingList } from '@/components/LendingList';
 import { LendingHistory } from '@/components/LendingHistory';
 import { EditBankDialog } from '@/components/EditBankDialog';
 import { AddBankDialog } from '@/components/AddBankDialog';
-import { ProfileDialog } from '@/components/ProfileDialog';
-import { Button } from '@/components/ui/button';
-import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar } from 'lucide-react';
+import { VoicePaymentDialog } from '@/components/VoicePaymentDialog';
+import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -61,8 +60,85 @@ const Index = () => {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [lendingTab, setLendingTab] = useState<'pending' | 'history'>('pending');
   const [cardSortBy, setCardSortBy] = useState<'billingDate' | 'bankName'>('billingDate');
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
   
   const { toast } = useToast();
+
+  const handleConfirmVoiceExpense = async (expense: {
+    sourceType: 'credit_card' | 'bank';
+    sourceId: string;
+    sourceName: string;
+    amount: number;
+    category: string;
+    note: string;
+  }) => {
+    if (!user) return;
+
+    // 1. Insert expense record
+    const newExpense = {
+      user_id: user.id,
+      amount: expense.amount,
+      date: new Date().toISOString().split('T')[0],
+      category: expense.category,
+      payment_method: expense.sourceType,
+      payment_source_id: expense.sourceId,
+      payment_source_name: expense.sourceName,
+      note: expense.note,
+    };
+
+    const { data: insertedExp, error: expError } = await supabase
+      .from('expenses')
+      .insert(newExpense)
+      .select()
+      .single();
+
+    if (expError) throw expError;
+
+    // Update local expenses state
+    if (insertedExp) {
+      const mapped: Expense = {
+        id: insertedExp.id,
+        amount: Number(insertedExp.amount),
+        date: insertedExp.date,
+        category: insertedExp.category as Expense['category'],
+        paymentMethod: insertedExp.payment_method as Expense['paymentMethod'],
+        paymentSourceId: insertedExp.payment_source_id,
+        paymentSourceName: insertedExp.payment_source_name,
+        note: insertedExp.note || undefined,
+        createdAt: insertedExp.created_at,
+      };
+      setExpenses(prev => [mapped, ...prev]);
+    }
+
+    // 2. Update Credit Card Bill or Bank Balance
+    if (expense.sourceType === 'credit_card') {
+      const targetCard = cards.find(c => c.id === expense.sourceId);
+      if (targetCard) {
+        const newBill = targetCard.currentBill + expense.amount;
+        const { error: cardError } = await supabase
+          .from('credit_cards')
+          .update({ current_bill: newBill })
+          .eq('id', targetCard.id);
+
+        if (!cardError) {
+          setCards(prev => prev.map(c => c.id === targetCard.id ? { ...c, currentBill: newBill } : c));
+        }
+      }
+    } else {
+      const targetBank = bankAccounts.find(b => b.id === expense.sourceId);
+      if (targetBank) {
+        const newBalance = targetBank.balance - expense.amount;
+        const { error: bankError } = await supabase
+          .from('bank_accounts')
+          .update({ balance: newBalance })
+          .eq('id', targetBank.id);
+
+        if (!bankError) {
+          setBankAccounts(prev => prev.map(b => b.id === targetBank.id ? { ...b, balance: newBalance } : b));
+        }
+      }
+    }
+  };
 
   const getBillingDaysLeft = (billingDate: number) => {
     const today = new Date();
@@ -684,6 +760,14 @@ const Index = () => {
             </div>
             <div className="flex gap-1 md:gap-2 shrink-0">
               <Button 
+                onClick={() => setVoiceDialogOpen(true)}
+                size="icon"
+                className="bg-amber-500 hover:bg-amber-600 text-white border-0 shadow-md backdrop-blur-sm rounded-lg md:rounded-xl h-8 w-8 md:h-10 md:w-10 transition-all active:scale-95"
+                title="Voice Payment Logger (Speak to add expense/bill)"
+              >
+                <Mic className="w-4 h-4 md:w-5 md:h-5" />
+              </Button>
+              <Button 
                 onClick={() => navigate('/todo')}
                 size="icon"
                 className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm rounded-lg md:rounded-xl h-8 w-8 md:h-10 md:w-10 transition-all active:scale-95"
@@ -1127,6 +1211,14 @@ const Index = () => {
         onOpenChange={setQuickExpenseDialogOpen}
         onSave={handleAddExpense}
         paymentSource={quickExpenseSource}
+      />
+
+      <VoicePaymentDialog
+        open={voiceDialogOpen}
+        onOpenChange={setVoiceDialogOpen}
+        cards={cards}
+        bankAccounts={bankAccounts}
+        onConfirmVoiceExpense={handleConfirmVoiceExpense}
       />
     </div>
   );
