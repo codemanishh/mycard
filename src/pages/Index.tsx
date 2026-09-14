@@ -17,6 +17,7 @@ import { EditBankDialog } from '@/components/EditBankDialog';
 import { AddBankDialog } from '@/components/AddBankDialog';
 import { ProfileDialog } from '@/components/ProfileDialog';
 import { VoicePaymentDialog } from '@/components/VoicePaymentDialog';
+import TodoApp from '@/pages/TodoApp';
 import { Button } from '@/components/ui/button';
 import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -63,6 +64,7 @@ const Index = () => {
   const [lendingTab, setLendingTab] = useState<'pending' | 'history'>('pending');
   const [cardSortBy, setCardSortBy] = useState<'billingDate' | 'bankName'>('billingDate');
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<string>('cards');
   
   const { toast } = useToast();
 
@@ -770,10 +772,10 @@ const Index = () => {
                 <Mic className="w-4 h-4 md:w-5 md:h-5" />
               </Button>
               <Button 
-                onClick={() => navigate('/todo')}
+                onClick={() => setMainTab('todo')}
                 size="icon"
                 className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm rounded-lg md:rounded-xl h-8 w-8 md:h-10 md:w-10 transition-all active:scale-95"
-                title="Todo App"
+                title="To-Do List"
               >
                 <ListTodo className="w-3.5 h-3.5 md:w-4 md:h-4" />
               </Button>
@@ -821,7 +823,7 @@ const Index = () => {
           </div>
 
           {/* Bank Balances */}
-          <BankBalanceCard accounts={bankAccounts} onBankClick={handleQuickExpenseFromBank} />
+          <BankBalanceCard accounts={bankAccounts} totalBills={totalBill} onBankClick={handleQuickExpenseFromBank} />
           <div className="flex gap-2 mt-2 md:mt-3">
             <Button 
               onClick={() => setBankAddDialogOpen(true)}
@@ -841,40 +843,6 @@ const Index = () => {
               <Pencil className="w-3 h-3 mr-1.5 md:mr-2" />
               Edit Balance
             </Button>
-          </div>
-          
-          {/* Actual Net Balance Breakdown Card */}
-          <div className="mt-3 md:mt-4 p-3.5 md:p-4 rounded-xl md:rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 text-white shadow-lg animate-fade-in">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 pb-2 border-b border-white/20">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-emerald-400/20 rounded-lg">
-                  <TrendingUp className="w-4 h-4 text-emerald-300" />
-                </div>
-                <span className="text-xs md:text-sm font-semibold text-white">Actual Net Balance</span>
-              </div>
-              <span className="text-[10px] md:text-xs text-white/70">Total Bank Funds minus Pending Card Bills</span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-center pt-1">
-              <div>
-                <p className="text-[10px] md:text-xs text-white/70">Bank Balance</p>
-                <p className="text-xs md:text-base font-bold text-emerald-300">₹{totalBankBalance.toLocaleString('en-IN')}</p>
-              </div>
-
-              <div className="border-x border-white/20 px-1">
-                <p className="text-[10px] md:text-xs text-white/70">- Bills to Pay</p>
-                <p className="text-xs md:text-base font-bold text-red-300">₹{totalBill.toLocaleString('en-IN')}</p>
-              </div>
-
-              <div>
-                <p className="text-[10px] md:text-xs text-white/90 font-medium">= Actual Balance</p>
-                <p className={`text-xs md:text-base font-extrabold ${
-                  netActualBalance >= 0 ? 'text-emerald-200' : 'text-red-200'
-                }`}>
-                  ₹{netActualBalance.toLocaleString('en-IN')}
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Stats Cards */}
@@ -913,31 +881,12 @@ const Index = () => {
       </header>
 
       <main className="max-w-6xl mx-auto px-3 md:px-6 py-4 md:py-6 pb-20 md:pb-24 -mt-2 md:-mt-4 relative z-10">
-        {/* Smart To-Do Nudges Banner */}
-        <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-primary/5 to-transparent border border-amber-500/20 flex items-center justify-between gap-3 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl">
-              <ListTodo className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-foreground">Smart Financial To-Dos & Auto-Scan</p>
-              <p className="text-[11px] text-muted-foreground">Auto-detect missed bills, pending lendings & essential money habits.</p>
-            </div>
-          </div>
-          <Button
-            onClick={() => navigate('/todo')}
-            size="sm"
-            className="rounded-xl text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-sm flex-shrink-0"
-          >
-            Open To-Do <ArrowLeft className="w-3 h-3 ml-1 rotate-180" />
-          </Button>
-        </div>
-
-        <Tabs defaultValue="cards" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-4 md:mb-6 bg-card/80 backdrop-blur-lg border border-border/50 shadow-card p-1 h-10 md:h-12 rounded-xl md:rounded-2xl">
+        <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-4 mb-4 md:mb-6 bg-card/80 backdrop-blur-lg border border-border/50 shadow-card p-1 h-10 md:h-12 rounded-xl md:rounded-2xl">
             <TabsTrigger value="cards" className="rounded-lg md:rounded-xl text-xs md:text-sm data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md transition-all">Cards</TabsTrigger>
             <TabsTrigger value="history" className="rounded-lg md:rounded-xl text-xs md:text-sm data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md transition-all">History</TabsTrigger>
             <TabsTrigger value="lending" className="rounded-lg md:rounded-xl text-xs md:text-sm data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md transition-all">Lending</TabsTrigger>
+            <TabsTrigger value="todo" className="rounded-lg md:rounded-xl text-xs md:text-sm data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md transition-all">To-Do</TabsTrigger>
           </TabsList>
 
           <TabsContent value="cards" className="animate-fade-in">
@@ -1148,6 +1097,10 @@ const Index = () => {
             ) : (
               <LendingHistory lendings={lendings} onDelete={handleDeleteLending} />
             )}
+          </TabsContent>
+
+          <TabsContent value="todo" className="animate-fade-in">
+            <TodoApp embedMode={true} />
           </TabsContent>
         </Tabs>
       </main>

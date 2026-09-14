@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import { 
   ArrowLeft, Plus, Search, Edit2, Trash2, Calendar, 
   Flag, Tag, CheckCircle2, Circle, Loader2, X,
@@ -131,7 +132,11 @@ const sortTodosByPriorityAndDate = (todosToSort: Todo[]): Todo[] => {
   });
 };
 
-const TodoApp = () => {
+interface TodoAppProps {
+  embedMode?: boolean;
+}
+
+const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -771,57 +776,78 @@ const TodoApp = () => {
   ).slice(0, 3);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="gradient-hero text-white relative overflow-hidden backdrop-blur-md bg-gradient-to-br from-primary/90 to-primary/70 dark:from-slate-900/95 dark:to-slate-800/80">
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-24 -right-24 w-64 sm:w-96 h-64 sm:h-96 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute -bottom-32 -left-32 w-56 sm:w-80 h-56 sm:h-80 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
-        </div>
-        
-        <div className="relative max-w-6xl mx-auto p-4 sm:p-6">
-          <div className="flex items-center gap-2 sm:gap-4 mb-4 sm:mb-6">
-            <Button 
-              onClick={() => navigate('/')}
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20 rounded-xl h-10 w-10"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-              <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm flex-shrink-0">
-                <ListTodo className="w-5 sm:w-6 h-5 sm:h-6" />
+    <div className={cn("bg-background", !embedMode && "min-h-screen")}>
+      {/* Header (Standalone mode) */}
+      {!embedMode && (
+        <header className="gradient-hero text-white relative overflow-hidden backdrop-blur-md bg-gradient-to-br from-primary/90 to-primary/70 dark:from-slate-900/95 dark:to-slate-800/80">
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute -top-24 -right-24 w-64 sm:w-96 h-64 sm:h-96 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
+            <div className="absolute -bottom-32 -left-32 w-56 sm:w-80 h-56 sm:h-80 bg-white/5 dark:bg-white/2 rounded-full blur-3xl animate-pulse" />
+          </div>
+          
+          <div className="relative max-w-6xl mx-auto p-4 sm:p-6">
+            <div className="flex items-center gap-2 sm:gap-4 mb-4 sm:mb-6">
+              <Button 
+                onClick={() => navigate('/')}
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/20 rounded-xl h-10 w-10"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm flex-shrink-0">
+                  <ListTodo className="w-5 sm:w-6 h-5 sm:h-6" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-lg sm:text-xl font-bold tracking-tight line-clamp-1">Todo App</h1>
+                  <p className="text-xs text-white/70">Stay organized</p>
+                  {!isOnline && <p className="text-xs text-warning mt-1">📡 Offline Mode</p>}
+                </div>
               </div>
-              <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-bold tracking-tight line-clamp-1">Todo App</h1>
-                <p className="text-xs text-white/70">Stay organized</p>
-                {!isOnline && <p className="text-xs text-warning mt-1">📡 Offline Mode</p>}
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              <div className="bg-white/15 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-white/20">
+                <div className="flex items-center gap-2 mb-1">
+                  <Circle className="w-4 h-4" />
+                  <span className="text-xs text-white/80">Pending</span>
+                </div>
+                <p className="text-2xl sm:text-3xl font-bold">{pendingCount}</p>
+              </div>
+              <div className="bg-white/15 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-white/20">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span className="text-xs text-white/80">Completed</span>
+                </div>
+                <p className="text-2xl sm:text-3xl font-bold">{completedCount}</p>
               </div>
             </div>
           </div>
+        </header>
+      )}
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            <div className="bg-white/15 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-white/20">
-              <div className="flex items-center gap-2 mb-1">
-                <Circle className="w-4 h-4" />
-                <span className="text-xs text-white/80">Pending</span>
+      <main className={cn("max-w-6xl mx-auto p-1 sm:p-2 md:p-4 relative z-10", !embedMode && "-mt-4")}>
+        {/* Compact Stats Bar for Embed Mode */}
+        {embedMode && (
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
+            <div className="bg-muted/40 backdrop-blur-md rounded-2xl p-3 border border-border/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Circle className="w-4 h-4 text-amber-500" />
+                <span className="text-xs font-medium text-muted-foreground">Pending Tasks</span>
               </div>
-              <p className="text-2xl sm:text-3xl font-bold">{pendingCount}</p>
+              <span className="text-lg font-bold text-foreground">{pendingCount}</span>
             </div>
-            <div className="bg-white/15 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-white/20">
-              <div className="flex items-center gap-2 mb-1">
-                <CheckCircle2 className="w-4 h-4" />
-                <span className="text-xs text-white/80">Completed</span>
+            <div className="bg-muted/40 backdrop-blur-md rounded-2xl p-3 border border-border/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span className="text-xs font-medium text-muted-foreground">Completed</span>
               </div>
-              <p className="text-2xl sm:text-3xl font-bold">{completedCount}</p>
+              <span className="text-lg font-bold text-foreground">{completedCount}</span>
             </div>
           </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto p-3 sm:p-4 md:p-6 -mt-4 relative z-10">
+        )}
         {/* Reminders Notifications */}
         {upcomingReminders.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -842,12 +868,7 @@ const TodoApp = () => {
           </div>
         )}
 
-        {/* Smart Auto-Detection & Researched Templates Banner */}
-        <SmartTodoDetector
-          detectedTasks={detectedTasks}
-          onAddTask={handleAddSingleTask}
-          onAddAllDetected={handleAddAllDetectedTasks}
-        />
+
 
         {/* Tabs */}
         <div className="mb-3 sm:mb-4 overflow-x-auto">
