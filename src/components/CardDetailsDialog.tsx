@@ -1,4 +1,5 @@
 import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
+import { Expense } from '@/types/expense';
 import { CreditCardVisual } from '@/components/CreditCardVisual';
 import {
   Dialog,
@@ -20,12 +21,13 @@ interface CardDetailsDialogProps {
   onAddExpense: (card: CreditCardType) => void;
   onClearOverdue?: (card: CreditCardType) => void;
   onClearTotalBill?: (card: CreditCardType) => void;
+  expenses?: Expense[];
 }
 
-export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, onAddExpense, onClearOverdue, onClearTotalBill }: CardDetailsDialogProps) => {
+export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, onAddExpense, onClearOverdue, onClearTotalBill, expenses }: CardDetailsDialogProps) => {
   if (!card) return null;
 
-  const status = getCardBillStatus(card);
+  const status = getCardBillStatus(card, expenses);
 
   const getOrdinalSuffix = (day: number): string => {
     if (day > 3 && day < 21) return 'th';
@@ -67,7 +69,7 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
         <div className="space-y-4">
           {/* Top Banner: Digital Wallet Credit Card Graphic */}
           <div className="transform hover:scale-[1.01] transition-transform">
-            <CreditCardVisual card={card} showDetails={true} />
+            <CreditCardVisual card={card} expenses={expenses} showDetails={true} />
           </div>
 
           {/* Billing Alert Notification */}

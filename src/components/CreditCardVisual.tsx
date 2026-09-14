@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
+import { Expense } from '@/types/expense';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { Badge } from '@/components/ui/badge';
 import { Wifi, AlertTriangle, CheckCircle2, Eye, EyeOff, Copy, Check } from 'lucide-react';
@@ -11,6 +12,7 @@ interface CreditCardVisualProps {
   onClick?: () => void;
   showDetails?: boolean;
   className?: string;
+  expenses?: Expense[];
 }
 
 // Map bank names to luxury background gradients
@@ -55,12 +57,12 @@ const getBankGradient = (bankName: string, color: string): string => {
   return 'from-slate-900 via-indigo-950 to-slate-950 text-white border-indigo-500/30';
 };
 
-export const CreditCardVisual = ({ card, onClick, showDetails = true, className }: CreditCardVisualProps) => {
+export const CreditCardVisual = ({ card, onClick, showDetails = true, className, expenses }: CreditCardVisualProps) => {
   const [showFullNumber, setShowFullNumber] = useState(false);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  const status = getCardBillStatus(card);
+  const status = getCardBillStatus(card, expenses);
   const bankColor = getBankColor(card.bankName);
   const gradientClass = getBankGradient(card.bankName, bankColor);
 

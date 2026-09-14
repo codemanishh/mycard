@@ -1,4 +1,5 @@
 import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
+import { Expense } from '@/types/expense';
 import { CreditCardVisual } from '@/components/CreditCardVisual';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,10 +11,11 @@ interface CreditCardItemProps {
   onEdit: (card: CreditCardType) => void;
   onDelete: (id: string) => void;
   onAddExpense?: (card: CreditCardType) => void;
+  expenses?: Expense[];
 }
 
-export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense }: CreditCardItemProps) => {
-  const status = getCardBillStatus(card);
+export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense, expenses }: CreditCardItemProps) => {
+  const status = getCardBillStatus(card, expenses);
 
   const hasOverdue = status.isOverdue && status.overdueAmount > 0;
   const availableCredit = Math.max(0, card.limitAmount - status.totalDue);
@@ -26,6 +28,7 @@ export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense }: CreditC
       {/* 3D Physical Credit Card Graphic */}
       <CreditCardVisual 
         card={card} 
+        expenses={expenses}
         onClick={() => onEdit(card)}
         className="group-hover:scale-[1.02] group-hover:shadow-2xl transition-all"
       />

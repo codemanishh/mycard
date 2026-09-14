@@ -25,7 +25,9 @@ export interface CardBillStatus {
   statusLabel: string;
 }
 
-export const getCardBillStatus = (card: CreditCard): CardBillStatus => {
+import type { Expense } from './expense';
+
+export const getCardBillStatus = (card: CreditCard, expenses?: Expense[]): CardBillStatus => {
   const today = new Date();
   const currentDay = today.getDate();
   const currentMonth = today.getMonth();
@@ -39,32 +41,87 @@ export const getCardBillStatus = (card: CreditCard): CardBillStatus => {
   const diffTime = nextBillingDate.getTime() - today.getTime();
   const daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
-  const overdueAmount = Math.max(0, card.overdueAmount || 0);
-  const currentAmount = Math.max(0, card.currentBill || 0);
+  let overdueAmount = Math.max(0, card.overdueAmount || 0);
+  let currentAmount = Math.max(0, card.currentBill || 0);
 
-  // Card has Overdue / Due bill ONLY if overdueAmount > 0
-  if (overdueAmount > 0) {
-    const overdueDays = currentDay >= card.billingDate ? currentDay - card.billingDate : 0;
-    return {
-      isOverdue: true,
-      overdueDays,
-      daysLeft,
-      overdueAmount,
-      currentAmount,
-      totalDue: overdueAmount + currentAmount,
-      statusLabel: overdueDays === 0 ? 'Due Today' : `${overdueDays}d Overdue`,
-    };
+  // Calculate dynamic cycle breakdown if expenses exist
+  if (expenses && expenses.length > 0) {
+    const cardExpenses = expenses.filter(
+      e => e.paymentMethod === 'credit_card' && e.paymentSourceId === card.id
+    );
+
+    if (cardExpenses.length > 0) {
+      let calcOverdue = 0;
+      let calcCurrent = 0;
+
+      // Current cycle start date:
+      // If today >= billingDate: cycle started on billingDate of current month
+      // If today < billingDate: cycle started on billingDate of previous month
+      let cycleStartDate: Date;
+      if (currentDay >= card.billingDate) {
+        cycleStartDate = new Date(currentYear, currentMonth, card.billingDate);
+      } else {
+        cycleStartDate = new Date(currentYear, currentMonth - 1, card.billingDate);
+      }
+      cycleStartDate.setHours(0, 0, 0, 0);
+
+      cardExpenses.forEach(exp => {
+        const parts = exp.date.split('-');
+        if (parts.length === 3) {
+          const expYear = parseInt(parts[0], 10);
+          const expMonth = parseInt(parts[1], 10) - 1;
+          const expDay = parseInt(parts[2], 10);
+          const expDateTime = new Date(expYear, expMonth, expDay, 0, 0, 0, 0);
+
+          if (expDateTime < cycleStartDate) {
+            calcOverdue += exp.amount;
+          } else {
+            calcCurrent += exp.amount;
+          }
+        }
+      });
+
+      // Apply computed breakdown if overdueAmount was not explicitly cleared
+      if ((card.overdueAmount === undefined || card.overdueAmount === 0) && calcOverdue > 0) {
+        overdueAmount = calcOverdue;
+        currentAmount = calcCurrent;
+      }
+    }
   }
 
-  // No overdue bill: currentAmount is Current Month Bill (spending in active cycle)
+  // Fallback if no expenses match but today >= billingDate and card has currentBill
+  if (overdueAmount === 0 && currentDay >= card.billingDate && card.currentBill > 0) {
+    if (card.overdueAmount === undefined) {
+      overdueAmount = card.currentBill;
+      currentAmount = 0;
+    }
+  }
+
+  const isOverdue = overdueAmount > 0;
+  let overdueDays = 0;
+
+  if (isOverdue) {
+    if (currentDay >= card.billingDate) {
+      overdueDays = currentDay - card.billingDate;
+    } else {
+      const prevBillingDate = new Date(currentYear, currentMonth - 1, card.billingDate);
+      const diffOverdue = today.getTime() - prevBillingDate.getTime();
+      overdueDays = Math.max(0, Math.floor(diffOverdue / (1000 * 60 * 60 * 24)));
+    }
+  }
+
+  const statusLabel = isOverdue
+    ? (overdueDays === 0 ? 'Due Today' : `${overdueDays}d Overdue`)
+    : (daysLeft === 0 ? 'Due Today' : `${daysLeft}d left`);
+
   return {
-    isOverdue: false,
-    overdueDays: 0,
+    isOverdue,
+    overdueDays,
     daysLeft,
-    overdueAmount: 0,
+    overdueAmount,
     currentAmount,
-    totalDue: currentAmount,
-    statusLabel: daysLeft === 0 ? 'Due Today' : `${daysLeft}d left`,
+    totalDue: overdueAmount + currentAmount,
+    statusLabel,
   };
 };
 

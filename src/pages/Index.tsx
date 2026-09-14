@@ -769,7 +769,7 @@ const Index = () => {
     });
   };
 
-  const totalBill = cards.reduce((sum, card) => sum + getCardBillStatus(card).totalDue, 0);
+  const totalBill = cards.reduce((sum, card) => sum + getCardBillStatus(card, expenses).totalDue, 0);
   const totalLimit = cards.reduce((sum, card) => sum + card.limitAmount, 0);
   const usedLimit = totalBill;
   const utilizationPercent = totalLimit > 0 ? Math.round((usedLimit / totalLimit) * 100) : 0;
@@ -1061,6 +1061,7 @@ const Index = () => {
                     card={card}
                     onClick={handleCardClick}
                     index={index}
+                    expenses={expenses}
                   />
                 ))}
               </div>
@@ -1074,6 +1075,7 @@ const Index = () => {
                     onEdit={handleEditCard}
                     onDelete={handleDeleteCard}
                     onAddExpense={handleQuickExpenseFromCard}
+                    expenses={expenses}
                   />
                 ))}
               </div>
@@ -1102,6 +1104,7 @@ const Index = () => {
                             onEdit={handleEditCard}
                             onDelete={handleDeleteCard}
                             onAddExpense={handleQuickExpenseFromCard}
+                            expenses={expenses}
                           />
                           {card.currentBill > 0 && (
                             <Button
@@ -1174,6 +1177,7 @@ const Index = () => {
         onAddExpense={handleQuickExpenseFromCard}
         onClearOverdue={handleClearOverdue}
         onClearTotalBill={handleClearTotalBill}
+        expenses={expenses}
       />
 
       <AddCardDialog
