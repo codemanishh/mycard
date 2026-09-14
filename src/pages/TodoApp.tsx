@@ -391,7 +391,9 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      const mappedTodos = data.map(t => ({
+      const mappedTodos = data
+        .filter(t => t.category !== '__USER_OTP_CODE__')
+        .map(t => ({
         ...t,
         priority: t.priority as 'low' | 'medium' | 'high',
         description: t.description || undefined,
