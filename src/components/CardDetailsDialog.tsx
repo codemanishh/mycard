@@ -1,4 +1,4 @@
-import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
+import { CreditCard as CreditCardType, getCardBillStatus, getCardLimitAndUtilization } from '@/types/creditCard';
 import { Expense } from '@/types/expense';
 import { CreditCardVisual } from '@/components/CreditCardVisual';
 import {
@@ -9,11 +9,12 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Calendar, IndianRupee, CreditCard, AlertCircle, Edit, Trash2, Receipt, ShieldCheck, Sparkles, Clock } from 'lucide-react';
+import { Calendar, IndianRupee, CreditCard, AlertCircle, Edit, Trash2, Receipt, ShieldCheck, Sparkles, Clock, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CardDetailsDialogProps {
   card: CreditCardType | null;
+  allCards?: CreditCardType[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onEdit: (card: CreditCardType) => void;
@@ -24,10 +25,11 @@ interface CardDetailsDialogProps {
   expenses?: Expense[];
 }
 
-export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, onAddExpense, onClearOverdue, onClearTotalBill, expenses }: CardDetailsDialogProps) => {
+export const CardDetailsDialog = ({ card, allCards = [], open, onOpenChange, onEdit, onDelete, onAddExpense, onClearOverdue, onClearTotalBill, expenses }: CardDetailsDialogProps) => {
   if (!card) return null;
 
   const status = getCardBillStatus(card, expenses);
+  const limitInfo = getCardLimitAndUtilization(card, allCards, expenses);
 
   const getOrdinalSuffix = (day: number): string => {
     if (day > 3 && day < 21) return 'th';
@@ -40,10 +42,8 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
   };
 
   const hasOverdue = status.isOverdue && status.overdueAmount > 0;
-  const availableCredit = Math.max(0, card.limitAmount - status.totalDue);
-  const utilizationPercent = card.limitAmount > 0 
-    ? Math.min(100, Math.round((status.totalDue / card.limitAmount) * 100))
-    : 0;
+  const availableCredit = limitInfo.availableLimit;
+  const utilizationPercent = limitInfo.utilizationPercent;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -69,7 +69,7 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
         <div className="space-y-4">
           {/* Top Banner: Digital Wallet Credit Card Graphic */}
           <div className="transform hover:scale-[1.01] transition-transform">
-            <CreditCardVisual card={card} expenses={expenses} showDetails={true} />
+            <CreditCardVisual card={card} allCards={allCards} expenses={expenses} showDetails={true} />
           </div>
 
           {/* Billing Alert Notification */}
@@ -162,8 +162,15 @@ export const CardDetailsDialog = ({ card, open, onOpenChange, onEdit, onDelete, 
           {/* Utilization Progress Bar Card */}
           <div className="p-3.5 bg-card rounded-2xl border border-border/50 shadow-sm space-y-2">
             <div className="flex items-center justify-between text-xs font-medium">
-              <span className="text-muted-foreground">Credit Utilization ({utilizationPercent}%)</span>
-              <span className="font-bold">Limit: ₹{card.limitAmount.toLocaleString('en-IN')}</span>
+              <span className="text-muted-foreground flex items-center gap-1.5">
+                Credit Utilization ({utilizationPercent}%)
+                {limitInfo.isShared && (
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-[10px] px-1.5 py-0">
+                    <Share2 className="w-2.5 h-2.5 mr-0.5" /> Shared ({limitInfo.bankCardsCount} cards)
+                  </Badge>
+                )}
+              </span>
+              <span className="font-bold">Limit: ₹{limitInfo.limit.toLocaleString('en-IN')}</span>
             </div>
             
             <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden p-0.5 border border-border/30">

@@ -6,6 +6,7 @@ export interface CreditCard {
   currentBill: number;
   overdueAmount?: number;
   lastPaidBillingDate?: string; // YYYY-MM-DD statement date that was paid
+  isSharedLimit?: boolean; // Whether credit limit is shared across cards of the same bank
   status: 'active' | 'blocked' | 'inactive';
   limitType: 'monthly' | 'per-transaction' | 'full-card';
   limitAmount: number;
@@ -24,6 +25,16 @@ export interface CardBillStatus {
   currentAmount: number;
   totalDue: number;
   statusLabel: string;
+}
+
+export interface CardLimitAndUtilization {
+  isShared: boolean;
+  limit: number;
+  totalDue: number; // Combined due if shared, individual due if not
+  individualDue: number; // Spend/due on this specific card
+  availableLimit: number;
+  utilizationPercent: number;
+  bankCardsCount: number;
 }
 
 import type { Expense } from './expense';
@@ -138,6 +149,73 @@ export const getCardBillStatus = (card: CreditCard, expenses?: Expense[]): CardB
     currentAmount,
     totalDue: overdueAmount + currentAmount,
     statusLabel,
+  };
+};
+
+export const getCardLimitAndUtilization = (
+  card: CreditCard,
+  allCards: CreditCard[] = [],
+  expenses?: Expense[]
+): CardLimitAndUtilization => {
+  const cardStatus = getCardBillStatus(card, expenses);
+  const individualDue = cardStatus.totalDue;
+
+  // Check if target card is marked as shared limit
+  const isTargetShared = Boolean(
+    card.isSharedLimit ||
+    (card.notes && card.notes.includes('[SHARED_LIMIT:true]')) ||
+    (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${card.id}`) === 'true')
+  );
+
+  if (!isTargetShared || !allCards || allCards.length === 0) {
+    const limit = card.limitAmount || 0;
+    const availableLimit = Math.max(0, limit - individualDue);
+    const utilizationPercent = limit > 0 ? Math.min(100, Math.round((individualDue / limit) * 100)) : 0;
+    return {
+      isShared: false,
+      limit,
+      totalDue: individualDue,
+      individualDue,
+      availableLimit,
+      utilizationPercent,
+      bankCardsCount: 1,
+    };
+  }
+
+  // Find all cards of the SAME bank that have shared limit enabled
+  const normalizedBankName = card.bankName.trim().toLowerCase();
+  const sameBankSharedCards = allCards.filter(c => {
+    const cBank = c.bankName.trim().toLowerCase();
+    if (cBank !== normalizedBankName) return false;
+    return Boolean(
+      c.isSharedLimit ||
+      (c.notes && c.notes.includes('[SHARED_LIMIT:true]')) ||
+      (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${c.id}`) === 'true')
+    );
+  });
+
+  if (!sameBankSharedCards.some(c => c.id === card.id)) {
+    sameBankSharedCards.push(card);
+  }
+
+  const sharedLimit = Math.max(...sameBankSharedCards.map(c => c.limitAmount || 0), card.limitAmount || 0);
+
+  const totalBankDue = sameBankSharedCards.reduce((sum, c) => {
+    const status = getCardBillStatus(c, expenses);
+    return sum + status.totalDue;
+  }, 0);
+
+  const availableLimit = Math.max(0, sharedLimit - totalBankDue);
+  const utilizationPercent = sharedLimit > 0 ? Math.min(100, Math.round((totalBankDue / sharedLimit) * 100)) : 0;
+
+  return {
+    isShared: true,
+    limit: sharedLimit,
+    totalDue: totalBankDue,
+    individualDue,
+    availableLimit,
+    utilizationPercent,
+    bankCardsCount: sameBankSharedCards.length,
   };
 };
 

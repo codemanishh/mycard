@@ -5,11 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { CreditCard } from '@/types/creditCard';
 import { useToast } from '@/hooks/use-toast';
 import { BankLogo } from './BankLogo';
 import { INDIAN_BANKS } from '@/lib/bankData';
-import { Search } from 'lucide-react';
+import { Search, Share2 } from 'lucide-react';
 
 interface AddCardDialogProps {
   open: boolean;
@@ -31,6 +32,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
     status: 'active' | 'blocked' | 'inactive';
     limitType: 'monthly' | 'per-transaction' | 'full-card';
     limitAmount: number;
+    isSharedLimit: boolean;
     cardNumber: string;
     expiryDate: string;
     notes: string;
@@ -43,6 +45,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
     status: 'active',
     limitType: 'monthly',
     limitAmount: 0,
+    isSharedLimit: false,
     cardNumber: '',
     expiryDate: '',
     notes: '',
@@ -59,6 +62,11 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         status: editCard.status,
         limitType: editCard.limitType,
         limitAmount: editCard.limitAmount,
+        isSharedLimit: Boolean(
+          editCard.isSharedLimit ||
+          (editCard.notes && editCard.notes.includes('[SHARED_LIMIT:true]')) ||
+          (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${editCard.id}`) === 'true')
+        ),
         cardNumber: editCard.cardNumber || '',
         expiryDate: editCard.expiryDate || '',
         notes: editCard.notes || '',
@@ -73,6 +81,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
         status: 'active',
         limitType: 'monthly',
         limitAmount: 0,
+        isSharedLimit: false,
         cardNumber: '',
         expiryDate: '',
         notes: '',
@@ -307,6 +316,30 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               onChange={(e) => setFormData({ ...formData, limitAmount: parseFloat(e.target.value) || 0 })}
               className="rounded-xl"
             />
+          </div>
+
+          {/* Shared Limit Checkbox */}
+          <div className="flex items-start space-x-3 p-3 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-2xl">
+            <Checkbox
+              id="isSharedLimit"
+              checked={formData.isSharedLimit}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, isSharedLimit: Boolean(checked) })
+              }
+              className="mt-0.5"
+            />
+            <div className="space-y-1">
+              <Label
+                htmlFor="isSharedLimit"
+                className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5"
+              >
+                <Share2 className="w-3.5 h-3.5 text-primary" />
+                Shared Limit across {formData.bankName || 'same bank'} cards
+              </Label>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                Check this if your cards from {formData.bankName || 'this bank'} share a single credit limit. Limits and credit utilization ratio will be calculated across all shared cards of this bank.
+              </p>
+            </div>
           </div>
 
           <div className="space-y-2">

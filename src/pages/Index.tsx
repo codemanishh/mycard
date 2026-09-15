@@ -186,6 +186,11 @@ const Index = () => {
             const match = card.notes.match(/\[LAST_PAID:([\d-]+)\]/);
             if (match) lastPaid = match[1];
           }
+          const isSharedLimit = Boolean(
+            (card as any).is_shared_limit ||
+            (card.notes && card.notes.includes('[SHARED_LIMIT:true]')) ||
+            (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${card.id}`) === 'true')
+          );
           return {
             id: card.id,
             cardName: card.card_name,
@@ -194,6 +199,7 @@ const Index = () => {
             currentBill: Number(card.current_bill) || 0,
             overdueAmount: Number((card as any).overdue_amount) || Number((card as any).overdueAmount) || 0,
             lastPaidBillingDate: lastPaid || undefined,
+            isSharedLimit,
             limitAmount: Number(card.limit_amount) || 0,
             limitType: card.limit_type as CreditCardType['limitType'],
             status: card.status as CreditCardType['status'],
@@ -354,26 +360,72 @@ const Index = () => {
     }
   };
 
-  const handleAddCard = async (cardData: Omit<CreditCardType, 'id' | 'createdAt'>) => {
+  const handleAddCard = async (cardData: Omit<CreditCardType, 'id' | 'createdAt'> & { isSharedLimit?: boolean }) => {
     if (!user) return;
 
+    let updatedNotes = cardData.notes || '';
+    if (cardData.isSharedLimit) {
+      if (!updatedNotes.includes('[SHARED_LIMIT:true]')) {
+        updatedNotes = updatedNotes ? `${updatedNotes} [SHARED_LIMIT:true]` : '[SHARED_LIMIT:true]';
+      }
+    } else {
+      updatedNotes = updatedNotes.replace(/\[SHARED_LIMIT:true\]/g, '').trim();
+    }
+
+    const payload = { ...cardData, notes: updatedNotes, isSharedLimit: Boolean(cardData.isSharedLimit) };
+
     if (editingCard) {
+      localStorage.setItem(`card_shared_limit_${editingCard.id}`, String(Boolean(cardData.isSharedLimit)));
+
       const { error } = await supabase
         .from('credit_cards')
         .update({
-          card_name: cardData.cardName,
-          bank_name: cardData.bankName,
-          billing_date: cardData.billingDate,
-          current_bill: cardData.currentBill,
-          limit_amount: cardData.limitAmount,
-          limit_type: cardData.limitType,
-          status: cardData.status,
-          notes: cardData.notes,
+          card_name: payload.cardName,
+          bank_name: payload.bankName,
+          billing_date: payload.billingDate,
+          current_bill: payload.currentBill,
+          limit_amount: payload.limitAmount,
+          limit_type: payload.limitType,
+          status: payload.status,
+          notes: payload.notes,
         })
         .eq('id', editingCard.id);
 
       if (!error) {
-        setCards(cards.map(c => c.id === editingCard.id ? { ...cardData, id: editingCard.id, createdAt: editingCard.createdAt } : c));
+        let updatedCards = cards.map(c => 
+          c.id === editingCard.id ? { ...payload, id: editingCard.id, createdAt: editingCard.createdAt } : c
+        );
+
+        if (payload.isSharedLimit) {
+          const normBank = payload.bankName.trim().toLowerCase();
+          const sameBankCards = updatedCards.filter(c => c.bankName.trim().toLowerCase() === normBank && c.id !== editingCard.id);
+          
+          for (const sCard of sameBankCards) {
+            localStorage.setItem(`card_shared_limit_${sCard.id}`, 'true');
+            let sNotes = sCard.notes || '';
+            if (!sNotes.includes('[SHARED_LIMIT:true]')) {
+              sNotes = sNotes ? `${sNotes} [SHARED_LIMIT:true]` : '[SHARED_LIMIT:true]';
+            }
+            await supabase.from('credit_cards').update({
+              limit_amount: payload.limitAmount,
+              notes: sNotes
+            }).eq('id', sCard.id);
+          }
+
+          updatedCards = updatedCards.map(c => {
+            if (c.bankName.trim().toLowerCase() === normBank) {
+              return {
+                ...c,
+                isSharedLimit: true,
+                limitAmount: payload.limitAmount,
+                notes: c.notes && !c.notes.includes('[SHARED_LIMIT:true]') ? `${c.notes} [SHARED_LIMIT:true]` : (c.notes || '[SHARED_LIMIT:true]')
+              };
+            }
+            return c;
+          });
+        }
+
+        setCards(updatedCards);
         setEditingCard(null);
       }
     } else {
@@ -381,25 +433,58 @@ const Index = () => {
         .from('credit_cards')
         .insert({
           user_id: user.id,
-          card_name: cardData.cardName,
-          bank_name: cardData.bankName,
-          billing_date: cardData.billingDate,
-          current_bill: cardData.currentBill,
-          limit_amount: cardData.limitAmount,
-          limit_type: cardData.limitType,
-          status: cardData.status,
-          notes: cardData.notes,
+          card_name: payload.cardName,
+          bank_name: payload.bankName,
+          billing_date: payload.billingDate,
+          current_bill: payload.currentBill,
+          limit_amount: payload.limitAmount,
+          limit_type: payload.limitType,
+          status: payload.status,
+          notes: payload.notes,
         })
         .select()
         .single();
 
       if (data && !error) {
+        localStorage.setItem(`card_shared_limit_${data.id}`, String(Boolean(cardData.isSharedLimit)));
         const newCard: CreditCardType = {
-          ...cardData,
+          ...payload,
           id: data.id,
           createdAt: data.created_at,
         };
-        setCards([newCard, ...cards]);
+
+        let updatedCards = [newCard, ...cards];
+
+        if (payload.isSharedLimit) {
+          const normBank = payload.bankName.trim().toLowerCase();
+          const sameBankCards = cards.filter(c => c.bankName.trim().toLowerCase() === normBank);
+
+          for (const sCard of sameBankCards) {
+            localStorage.setItem(`card_shared_limit_${sCard.id}`, 'true');
+            let sNotes = sCard.notes || '';
+            if (!sNotes.includes('[SHARED_LIMIT:true]')) {
+              sNotes = sNotes ? `${sNotes} [SHARED_LIMIT:true]` : '[SHARED_LIMIT:true]';
+            }
+            await supabase.from('credit_cards').update({
+              limit_amount: payload.limitAmount,
+              notes: sNotes
+            }).eq('id', sCard.id);
+          }
+
+          updatedCards = updatedCards.map(c => {
+            if (c.bankName.trim().toLowerCase() === normBank) {
+              return {
+                ...c,
+                isSharedLimit: true,
+                limitAmount: payload.limitAmount,
+                notes: c.notes && !c.notes.includes('[SHARED_LIMIT:true]') ? `${c.notes} [SHARED_LIMIT:true]` : (c.notes || '[SHARED_LIMIT:true]')
+              };
+            }
+            return c;
+          });
+        }
+
+        setCards(updatedCards);
       }
     }
   };
@@ -845,7 +930,26 @@ const Index = () => {
   };
 
   const totalBill = cards.reduce((sum, card) => sum + getCardBillStatus(card, expenses).totalDue, 0);
-  const totalLimit = cards.reduce((sum, card) => sum + card.limitAmount, 0);
+  
+  const sharedBankLimitsProcessed = new Set<string>();
+  const totalLimit = cards.reduce((sum, card) => {
+    const isShared = Boolean(
+      card.isSharedLimit ||
+      (card.notes && card.notes.includes('[SHARED_LIMIT:true]')) ||
+      (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${card.id}`) === 'true')
+    );
+    if (isShared) {
+      const normBank = card.bankName.trim().toLowerCase();
+      if (sharedBankLimitsProcessed.has(normBank)) {
+        return sum;
+      }
+      sharedBankLimitsProcessed.add(normBank);
+      const sameBankCards = cards.filter(c => c.bankName.trim().toLowerCase() === normBank);
+      const maxBankLimit = Math.max(...sameBankCards.map(c => c.limitAmount || 0), card.limitAmount || 0);
+      return sum + maxBankLimit;
+    }
+    return sum + (card.limitAmount || 0);
+  }, 0);
   const usedLimit = totalBill;
   const utilizationPercent = totalLimit > 0 ? Math.round((usedLimit / totalLimit) * 100) : 0;
   const totalBankBalance = bankAccounts.reduce((sum, bank) => sum + bank.balance, 0);
@@ -1121,6 +1225,7 @@ const Index = () => {
                   <CardRectangle
                     key={card.id}
                     card={card}
+                    cards={cards}
                     onClick={handleCardClick}
                     index={index}
                     expenses={expenses}
@@ -1134,6 +1239,7 @@ const Index = () => {
                   <CreditCardItem
                     key={card.id}
                     card={card}
+                    cards={cards}
                     onEdit={handleEditCard}
                     onDelete={handleDeleteCard}
                     onAddExpense={handleQuickExpenseFromCard}
@@ -1191,6 +1297,7 @@ const Index = () => {
 
       <CardDetailsDialog
         card={selectedCard}
+        allCards={cards}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
         onEdit={handleEditCard}

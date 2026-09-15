@@ -1,19 +1,21 @@
-import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
+import { CreditCard as CreditCardType, getCardBillStatus, getCardLimitAndUtilization } from '@/types/creditCard';
 import { Expense } from '@/types/expense';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Share2 } from 'lucide-react';
 
 interface CardRectangleProps {
   card: CreditCardType;
+  cards?: CreditCardType[];
   onClick: (card: CreditCardType) => void;
   index: number;
   expenses?: Expense[];
 }
 
-export const CardRectangle = ({ card, onClick, index, expenses }: CardRectangleProps) => {
+export const CardRectangle = ({ card, cards = [], onClick, index, expenses }: CardRectangleProps) => {
   const status = getCardBillStatus(card, expenses);
+  const limitInfo = getCardLimitAndUtilization(card, cards, expenses);
   const bankColor = getBankColor(card.bankName);
   const cleanCardTitle = card.cardName.replace(/^R_/, '').replace(/_/g, ' ');
 
@@ -47,9 +49,14 @@ export const CardRectangle = ({ card, onClick, index, expenses }: CardRectangleP
               <h3 className="text-xs sm:text-sm font-bold text-foreground truncate leading-tight title-case">
                 {cleanCardTitle}
               </h3>
-              <p className="text-[10px] text-muted-foreground truncate leading-tight">
-                {card.bankName}
-              </p>
+              <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate leading-tight">
+                <span>{card.bankName}</span>
+                {limitInfo.isShared && (
+                  <span className="inline-flex items-center gap-0.5 px-1 rounded bg-primary/15 text-primary font-extrabold text-[9px]">
+                    <Share2 className="w-2.5 h-2.5" /> Shared Limit
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

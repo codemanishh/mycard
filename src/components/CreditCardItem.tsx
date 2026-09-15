@@ -8,26 +8,24 @@ import { cn } from '@/lib/utils';
 
 interface CreditCardItemProps {
   card: CreditCardType;
+  cards?: CreditCardType[];
   onEdit: (card: CreditCardType) => void;
   onDelete: (id: string) => void;
   onAddExpense?: (card: CreditCardType) => void;
   expenses?: Expense[];
 }
 
-export const CreditCardItem = ({ card, onEdit, onDelete, onAddExpense, expenses }: CreditCardItemProps) => {
+export const CreditCardItem = ({ card, cards = [], onEdit, onDelete, onAddExpense, expenses }: CreditCardItemProps) => {
   const status = getCardBillStatus(card, expenses);
 
   const hasOverdue = status.isOverdue && status.overdueAmount > 0;
-  const availableCredit = Math.max(0, card.limitAmount - status.totalDue);
-  const utilizationPercent = card.limitAmount > 0 
-    ? Math.min(100, Math.round((status.totalDue / card.limitAmount) * 100))
-    : 0;
 
   return (
     <div className="group space-y-3 transition-all duration-300">
       {/* 3D Physical Credit Card Graphic */}
       <CreditCardVisual 
         card={card} 
+        allCards={cards}
         expenses={expenses}
         onClick={() => onEdit(card)}
         className="group-hover:scale-[1.02] group-hover:shadow-2xl transition-all"

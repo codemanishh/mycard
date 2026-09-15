@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
+import { CreditCard as CreditCardType, getCardBillStatus, getCardLimitAndUtilization } from '@/types/creditCard';
 import { Expense } from '@/types/expense';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { Badge } from '@/components/ui/badge';
-import { Wifi, AlertTriangle, CheckCircle2, Eye, EyeOff, Copy, Check } from 'lucide-react';
+import { Wifi, AlertTriangle, CheckCircle2, Eye, EyeOff, Copy, Check, Share2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 interface CreditCardVisualProps {
   card: CreditCardType;
+  allCards?: CreditCardType[];
   onClick?: () => void;
   showDetails?: boolean;
   className?: string;
@@ -28,8 +29,8 @@ const getBankGradient = (bankName: string, color: string): string => {
   if (norm.includes('axis')) {
     return 'from-[#500028] via-[#97144D] to-[#300018] text-white border-pink-400/30';
   }
-  if (norm.includes('sbi') || norm.includes('state bank')) {
-    return 'from-[#0B2545] via-[#1A4C9E] to-[#134074] text-white border-cyan-400/30';
+  if (norm.includes('sbi')) {
+    return 'from-[#102A6B] via-[#21409A] to-[#0B1B47] text-white border-indigo-400/30';
   }
   if (norm.includes('kotak')) {
     return 'from-[#8B0000] via-[#ED1C24] to-[#4A0000] text-white border-red-400/30';
@@ -57,19 +58,18 @@ const getBankGradient = (bankName: string, color: string): string => {
   return 'from-slate-900 via-indigo-950 to-slate-950 text-white border-indigo-500/30';
 };
 
-export const CreditCardVisual = ({ card, onClick, showDetails = true, className, expenses }: CreditCardVisualProps) => {
+export const CreditCardVisual = ({ card, allCards = [], onClick, showDetails = true, className, expenses }: CreditCardVisualProps) => {
   const [showFullNumber, setShowFullNumber] = useState(false);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
   const status = getCardBillStatus(card, expenses);
+  const limitInfo = getCardLimitAndUtilization(card, allCards, expenses);
   const bankColor = getBankColor(card.bankName);
   const gradientClass = getBankGradient(card.bankName, bankColor);
 
-  const availableCredit = Math.max(0, card.limitAmount - status.totalDue);
-  const utilizationPercent = card.limitAmount > 0 
-    ? Math.min(100, Math.round((status.totalDue / card.limitAmount) * 100))
-    : 0;
+  const availableCredit = limitInfo.availableLimit;
+  const utilizationPercent = limitInfo.utilizationPercent;
 
   // Format real or dummy card number
   const fullCardNumber = card.cardNumber?.trim() || `4532 8912 3409 ${((card.id.charCodeAt(0) || 4) * 1111).toString().slice(-4)}`;
@@ -99,46 +99,44 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className,
     >
       {/* Decorative Metallic Sheen Overlay */}
       <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 pointer-events-none group-hover:translate-x-full transition-transform duration-1000 ease-out" />
-      <div className="absolute -right-16 -top-16 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-      <div className="absolute -left-16 -bottom-16 w-48 h-48 bg-black/30 rounded-full blur-2xl pointer-events-none" />
+      <div className="absolute -right-16 -top-16 w-56 h-56 bg-white/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700" />
+      <div className="absolute -left-16 -bottom-16 w-56 h-56 bg-black/20 rounded-full blur-2xl pointer-events-none" />
 
-      {/* Card Header: Bank Logo & Status Badges */}
+      {/* Card Header: Logo & Status Badge */}
       <div className="flex items-center justify-between relative z-10 mb-4 md:mb-6">
         <div className="flex items-center gap-3">
-          <BankLogo bankName={card.bankName} size="md" className="shadow-lg border-2 border-white/20" />
+          <div className="p-1 bg-white/90 dark:bg-slate-900/90 rounded-xl shadow-lg border border-white/20">
+            <BankLogo bankName={card.bankName} size="md" />
+          </div>
           <div>
-            <h3 className="font-bold text-base md:text-lg leading-tight tracking-wide drop-shadow-sm">
-              {card.cardName}
-            </h3>
-            <p className="text-xs text-white/70 font-medium">{card.bankName}</p>
+            <h4 className="font-bold text-base md:text-lg text-white leading-tight drop-shadow-sm truncate max-w-[170px] md:max-w-[210px]">
+              {card.cardName.replace(/^R_/, '').replace(/_/g, ' ')}
+            </h4>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs text-white/80 font-medium">{card.bankName}</p>
+              {limitInfo.isShared && (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-white/20 text-white flex items-center gap-0.5">
+                  <Share2 className="w-2.5 h-2.5" /> Shared
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Status Badge */}
+          {/* Billing Status Badge */}
           <Badge 
+            variant={status.isOverdue && status.overdueAmount > 0 ? 'destructive' : 'secondary'}
             className={cn(
-              "text-[10px] md:text-xs px-2.5 py-1 font-bold rounded-full border shadow-md backdrop-blur-md transition-all",
-              status.isOverdue 
-                ? "bg-red-600 text-white border-red-400 animate-pulse" 
-                : status.daysLeft <= 5 
-                  ? "bg-amber-500 text-white border-amber-300"
-                  : "bg-emerald-500/90 text-white border-emerald-300"
+              "text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full shadow-md backdrop-blur-md",
+              status.isOverdue && status.overdueAmount > 0 
+                ? "bg-red-500 text-white animate-pulse" 
+                : status.daysLeft === 0 
+                  ? "bg-amber-500 text-white" 
+                  : "bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
             )}
           >
-            {status.isOverdue ? (
-              <span className="flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> OVERDUE
-              </span>
-            ) : status.daysLeft <= 5 ? (
-              <span className="flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> {status.statusLabel}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> {status.statusLabel}
-              </span>
-            )}
+            {status.statusLabel}
           </Badge>
 
           {/* Blocked / Active status badge */}
@@ -224,29 +222,27 @@ export const CreditCardVisual = ({ card, onClick, showDetails = true, className,
             </div>
             
             <div className="text-right">
-              <p className="text-[10px] md:text-xs uppercase tracking-wider font-semibold text-white/70">Limit</p>
+              <p className="text-[10px] md:text-xs uppercase tracking-wider font-semibold text-white/70">
+                {limitInfo.isShared ? "Limit (Shared)" : "Limit"}
+              </p>
               <p className="text-xs md:text-sm font-bold font-mono text-white/90">
-                ₹{card.limitAmount.toLocaleString('en-IN')}
+                ₹{limitInfo.limit.toLocaleString('en-IN')}
               </p>
             </div>
           </div>
 
           {/* Limit Utilization Progress Bar */}
-          {card.limitAmount > 0 && (
+          {limitInfo.limit > 0 && (
             <div className="space-y-1 pt-1">
               <div className="flex justify-between text-[10px] font-semibold text-white/70">
                 <span>Available: ₹{availableCredit.toLocaleString('en-IN')}</span>
                 <span>{utilizationPercent}% Used</span>
               </div>
-              <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/10">
+              <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
                 <div 
                   className={cn(
                     "h-full rounded-full transition-all duration-500",
-                    utilizationPercent > 80 
-                      ? "bg-gradient-to-r from-amber-400 to-red-500" 
-                      : utilizationPercent > 50
-                        ? "bg-gradient-to-r from-emerald-400 to-amber-400"
-                        : "bg-gradient-to-r from-emerald-400 to-teal-300"
+                    utilizationPercent > 80 ? "bg-red-400" : utilizationPercent > 50 ? "bg-amber-300" : "bg-emerald-300"
                   )}
                   style={{ width: `${utilizationPercent}%` }}
                 />
