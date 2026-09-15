@@ -1260,46 +1260,17 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         </div>
 
 
-        {/* Search & Filters */}
+        {/* Search */}
         <Card className="p-3 sm:p-4 mb-3 sm:mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 hover:shadow-elevated transition-all duration-300">
-          <div className="flex flex-col gap-2 sm:gap-3">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tasks..."
-                className="pl-10 rounded-xl h-10 text-sm"
-              />
-            </div>
-            <div className="flex gap-2 w-full">
-            <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="flex-1 rounded-xl h-10 text-sm">
-                <Tag className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Cat" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {CATEGORIES.map(cat => (
-                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterPriority} onValueChange={setFilterPriority}>
-              <SelectTrigger className="flex-1 rounded-xl h-10 text-sm">
-                <Flag className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Pri" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priorities</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-            </div>
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tasks..."
+              className="pl-10 rounded-xl h-10 text-sm"
+            />
           </div>
-
         </Card>
 
         {/* Todo List */}

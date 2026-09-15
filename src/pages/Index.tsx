@@ -180,21 +180,29 @@ const Index = () => {
         .order('created_at', { ascending: false });
       
       if (cardsData) {
-        setCards(cardsData.map(card => ({
-          id: card.id,
-          cardName: card.card_name,
-          bankName: card.bank_name,
-          billingDate: card.billing_date,
-          currentBill: Number(card.current_bill) || 0,
-          overdueAmount: Number((card as any).overdue_amount) || Number((card as any).overdueAmount) || 0,
-          limitAmount: Number(card.limit_amount) || 0,
-          limitType: card.limit_type as CreditCardType['limitType'],
-          status: card.status as CreditCardType['status'],
-          notes: card.notes || '',
-          cardNumber: (card as any).card_number || (card as any).cardNumber || '',
-          expiryDate: (card as any).expiry_date || (card as any).expiryDate || '',
-          createdAt: card.created_at,
-        })));
+        setCards(cardsData.map(card => {
+          let lastPaid = localStorage.getItem(`card_last_paid_${card.id}`);
+          if (!lastPaid && card.notes && card.notes.includes('[LAST_PAID:')) {
+            const match = card.notes.match(/\[LAST_PAID:([\d-]+)\]/);
+            if (match) lastPaid = match[1];
+          }
+          return {
+            id: card.id,
+            cardName: card.card_name,
+            bankName: card.bank_name,
+            billingDate: card.billing_date,
+            currentBill: Number(card.current_bill) || 0,
+            overdueAmount: Number((card as any).overdue_amount) || Number((card as any).overdueAmount) || 0,
+            lastPaidBillingDate: lastPaid || undefined,
+            limitAmount: Number(card.limit_amount) || 0,
+            limitType: card.limit_type as CreditCardType['limitType'],
+            status: card.status as CreditCardType['status'],
+            notes: card.notes || '',
+            cardNumber: (card as any).card_number || (card as any).cardNumber || '',
+            expiryDate: (card as any).expiry_date || (card as any).expiryDate || '',
+            createdAt: card.created_at,
+          };
+        }));
       }
 
       // Fetch bank accounts
@@ -400,19 +408,50 @@ const Index = () => {
     if (!user) return;
     const cardStatus = getCardBillStatus(card, expenses);
     const dueAmountToPay = cardStatus.overdueAmount;
-    const newCurrentBill = Math.max(0, card.currentBill - dueAmountToPay);
+
+    // Statement date for current cycle
+    const today = new Date();
+    const currentDay = today.getDate();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    let statementDate: Date;
+    if (currentDay >= card.billingDate) {
+      statementDate = new Date(currentYear, currentMonth, card.billingDate);
+    } else {
+      statementDate = new Date(currentYear, currentMonth - 1, card.billingDate);
+    }
+
+    const yyyy = statementDate.getFullYear();
+    const mm = String(statementDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(statementDate.getDate()).padStart(2, '0');
+    const paidDateStr = `${yyyy}-${mm}-${dd}`;
+
+    localStorage.setItem(`card_last_paid_${card.id}`, paidDateStr);
+
+    const updatedNotes = card.notes 
+      ? (card.notes.includes('[LAST_PAID:') 
+          ? card.notes.replace(/\[LAST_PAID:[\d-]+\]/g, `[LAST_PAID:${paidDateStr}]`) 
+          : card.notes + ` [LAST_PAID:${paidDateStr}]`)
+      : `[LAST_PAID:${paidDateStr}]`;
 
     const { error } = await supabase
       .from('credit_cards')
-      .update({ current_bill: newCurrentBill })
+      .update({ notes: updatedNotes })
       .eq('id', card.id);
 
     if (!error) {
-      setCards(cards.map(c => c.id === card.id ? { ...c, currentBill: newCurrentBill, overdueAmount: 0 } : c));
-      setSelectedCard(prev => prev && prev.id === card.id ? { ...prev, currentBill: newCurrentBill, overdueAmount: 0 } : prev);
+      const updatedCard: CreditCardType = {
+        ...card,
+        overdueAmount: 0,
+        lastPaidBillingDate: paidDateStr,
+        notes: updatedNotes,
+      };
+      setCards(cards.map(c => c.id === card.id ? updatedCard : c));
+      setSelectedCard(prev => prev && prev.id === card.id ? updatedCard : prev);
       toast({
         title: 'Statement Bill Paid! 🎉',
-        description: `Paid ₹${dueAmountToPay.toLocaleString('en-IN')} due bill for ${card.cardName}.`,
+        description: `Paid ₹${dueAmountToPay.toLocaleString('en-IN')} statement bill for ${card.cardName}.`,
       });
     } else {
       toast({
@@ -425,14 +464,36 @@ const Index = () => {
 
   const handleClearTotalBill = async (card: CreditCardType) => {
     if (!user) return;
+
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const paidDateStr = `${yyyy}-${mm}-${dd}`;
+
+    localStorage.setItem(`card_last_paid_${card.id}`, paidDateStr);
+
+    const updatedNotes = card.notes 
+      ? (card.notes.includes('[LAST_PAID:') 
+          ? card.notes.replace(/\[LAST_PAID:[\d-]+\]/g, `[LAST_PAID:${paidDateStr}]`) 
+          : card.notes + ` [LAST_PAID:${paidDateStr}]`)
+      : `[LAST_PAID:${paidDateStr}]`;
+
     const { error } = await supabase
       .from('credit_cards')
-      .update({ current_bill: 0 })
+      .update({ current_bill: 0, notes: updatedNotes })
       .eq('id', card.id);
 
     if (!error) {
-      setCards(cards.map(c => c.id === card.id ? { ...c, currentBill: 0, overdueAmount: 0 } : c));
-      setSelectedCard(prev => prev && prev.id === card.id ? { ...prev, currentBill: 0, overdueAmount: 0 } : prev);
+      const updatedCard: CreditCardType = {
+        ...card,
+        currentBill: 0,
+        overdueAmount: 0,
+        lastPaidBillingDate: paidDateStr,
+        notes: updatedNotes,
+      };
+      setCards(cards.map(c => c.id === card.id ? updatedCard : c));
+      setSelectedCard(prev => prev && prev.id === card.id ? updatedCard : prev);
       toast({
         title: 'Total Bill Cleared! 🎉',
         description: `All bills for ${card.cardName} have been marked as paid.`,
@@ -1084,7 +1145,12 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="history" className="animate-fade-in">
-            <TransactionHistory expenses={expenses} onDeleteExpense={handleDeleteExpense} />
+            <TransactionHistory 
+              expenses={expenses} 
+              cards={cards} 
+              bankAccounts={bankAccounts} 
+              onDeleteExpense={handleDeleteExpense} 
+            />
           </TabsContent>
 
           <TabsContent value="lending" className="animate-fade-in">
@@ -1180,6 +1246,43 @@ const Index = () => {
         onOpenChange={setProfileDialogOpen}
         userId={user?.id || ''}
         userEmail={user?.email || ''}
+        onDataReset={async () => {
+          setExpenses([]);
+          setLendings([]);
+
+          const { data: cardsData } = await supabase.from('credit_cards').select('*');
+          if (cardsData && cardsData.length > 0) {
+            setCards(cardsData.map(c => ({
+              id: c.id,
+              cardName: c.card_name,
+              bankName: c.bank_name,
+              billingDate: c.billing_date,
+              currentBill: 0,
+              overdueAmount: 0,
+              limitAmount: Number(c.limit_amount) || 0,
+              limitType: c.limit_type as CreditCardType['limitType'],
+              status: c.status as CreditCardType['status'],
+              notes: c.notes || '',
+              cardNumber: (c as any).card_number || '',
+              expiryDate: (c as any).expiry_date || '',
+              createdAt: c.created_at,
+            })));
+          } else {
+            setCards([]);
+          }
+
+          const { data: banksData } = await supabase.from('bank_accounts').select('*');
+          if (banksData && banksData.length > 0) {
+            setBankAccounts(banksData.map(b => ({
+              id: b.id,
+              bankName: b.bank_name,
+              balance: 0,
+              type: b.type as BankAccount['type'],
+            })));
+          } else {
+            setBankAccounts([]);
+          }
+        }}
       />
 
       <QuickExpenseDialog
