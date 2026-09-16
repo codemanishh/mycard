@@ -144,16 +144,15 @@ const Index = () => {
     }
   };
 
-  const getBillingDaysLeft = (billingDate: number) => {
-    const today = new Date();
-    const currentDay = today.getDate();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-    let nextBillingDate = new Date(currentYear, currentMonth, billingDate);
-    if (currentDay >= billingDate) {
-      nextBillingDate = new Date(currentYear, currentMonth + 1, billingDate);
+  const getCardEffectiveUrgency = (card: CreditCardType) => {
+    const status = getCardBillStatus(card, expenses);
+    if (status.isOverdue && status.overdueAmount > 0) {
+      return -1000 - Math.max(0, status.overdueDays);
     }
-    return Math.ceil((nextBillingDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (status.daysLeft === 0 || status.statusLabel.toLowerCase().includes('today')) {
+      return -500;
+    }
+    return status.daysLeft;
   };
 
   const sortedCards = [...cards].sort((a, b) => {
@@ -162,10 +161,18 @@ const Index = () => {
       if (bankCompare !== 0) return bankCompare;
       return a.cardName.localeCompare(b.cardName);
     }
-    // Default: Sort by billing date / days left (nearest deadline first)
-    const daysA = getBillingDaysLeft(a.billingDate);
-    const daysB = getBillingDaysLeft(b.billingDate);
-    return daysA - daysB;
+    // Order by Due Date urgency (Overdue & Due Today first, then nearest due date)
+    const urgencyA = getCardEffectiveUrgency(a);
+    const urgencyB = getCardEffectiveUrgency(b);
+    if (urgencyA !== urgencyB) {
+      return urgencyA - urgencyB;
+    }
+    const statusA = getCardBillStatus(a, expenses);
+    const statusB = getCardBillStatus(b, expenses);
+    if (statusB.totalDue !== statusA.totalDue) {
+      return statusB.totalDue - statusA.totalDue;
+    }
+    return a.bankName.localeCompare(b.bankName);
   });
 
   // Fetch data from database
