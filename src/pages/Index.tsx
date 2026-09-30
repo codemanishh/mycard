@@ -35,14 +35,48 @@ import {
 } from "@/components/ui/carousel";
 import { supabase } from '@/integrations/supabase/client';
 
+const CACHE_KEYS = {
+  CARDS: 'mycard_cached_cards',
+  BANKS: 'mycard_cached_banks',
+  EXPENSES: 'mycard_cached_expenses',
+  LENDINGS: 'mycard_cached_lendings',
+};
+
+function getCachedData<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function setCachedData(key: string, value: any) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn('Cache write failed:', e);
+  }
+}
+
 const Index = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const { queueMutation } = useOffline();
-  const [cards, setCards] = useState<CreditCardType[]>([]);
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [lendings, setLendings] = useState<Lending[]>([]);
+  
+  // Instant 0ms load from local storage cache
+  const [cards, setCards] = useState<CreditCardType[]>(() => getCachedData(CACHE_KEYS.CARDS, []));
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => getCachedData(CACHE_KEYS.BANKS, []));
+  const [expenses, setExpenses] = useState<Expense[]>(() => getCachedData(CACHE_KEYS.EXPENSES, []));
+  const [lendings, setLendings] = useState<Lending[]>(() => getCachedData(CACHE_KEYS.LENDINGS, []));
+
+  // Automatically update local cache whenever state changes
+  useEffect(() => { setCachedData(CACHE_KEYS.CARDS, cards); }, [cards]);
+  useEffect(() => { setCachedData(CACHE_KEYS.BANKS, bankAccounts); }, [bankAccounts]);
+  useEffect(() => { setCachedData(CACHE_KEYS.EXPENSES, expenses); }, [expenses]);
+  useEffect(() => { setCachedData(CACHE_KEYS.LENDINGS, lendings); }, [lendings]);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
@@ -176,103 +210,109 @@ const Index = () => {
     return a.bankName.localeCompare(b.bankName);
   });
 
-  // Fetch data from database
+  // Background Supabase Sync (Non-blocking, fallback to cached data)
   useEffect(() => {
     if (!user) return;
     
     const fetchData = async () => {
-      // Fetch credit cards
-      const { data: cardsData } = await supabase
-        .from('credit_cards')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (cardsData) {
-        setCards(cardsData.map(card => {
-          let lastPaid = localStorage.getItem(`card_last_paid_${card.id}`);
-          if (!lastPaid && card.notes && card.notes.includes('[LAST_PAID:')) {
-            const match = card.notes.match(/\[LAST_PAID:([\d-]+)\]/);
-            if (match) lastPaid = match[1];
-          }
-          const isSharedLimit = Boolean(
-            (card as any).is_shared_limit ||
-            (card.notes && card.notes.includes('[SHARED_LIMIT:true]')) ||
-            (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${card.id}`) === 'true')
-          );
-          return {
-            id: card.id,
-            cardName: card.card_name,
-            bankName: card.bank_name,
-            billingDate: card.billing_date,
-            currentBill: Number(card.current_bill) || 0,
-            overdueAmount: Number((card as any).overdue_amount) || Number((card as any).overdueAmount) || 0,
-            lastPaidBillingDate: lastPaid || undefined,
-            isSharedLimit,
-            limitAmount: Number(card.limit_amount) || 0,
-            limitType: card.limit_type as CreditCardType['limitType'],
-            status: card.status as CreditCardType['status'],
-            notes: card.notes || '',
-            cardNumber: (card as any).card_number || (card as any).cardNumber || '',
-            expiryDate: (card as any).expiry_date || (card as any).expiryDate || '',
-            createdAt: card.created_at,
-          };
-        }));
-      }
+      try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
-      // Fetch bank accounts
-      const { data: banksData } = await supabase
-        .from('bank_accounts')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (banksData) {
-        setBankAccounts(banksData.map(bank => ({
-          id: bank.id,
-          bankName: bank.bank_name,
-          balance: Number(bank.balance) || 0,
-          type: bank.type as BankAccount['type'],
-        })));
-      }
+        // 1. Fetch credit cards
+        const { data: cardsData } = await supabase
+          .from('credit_cards')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (cardsData) {
+          setCards(cardsData.map(card => {
+            let lastPaid = localStorage.getItem(`card_last_paid_${card.id}`);
+            if (!lastPaid && card.notes && card.notes.includes('[LAST_PAID:')) {
+              const match = card.notes.match(/\[LAST_PAID:([\d-]+)\]/);
+              if (match) lastPaid = match[1];
+            }
+            const isSharedLimit = Boolean(
+              (card as any).is_shared_limit ||
+              (card.notes && card.notes.includes('[SHARED_LIMIT:true]')) ||
+              (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${card.id}`) === 'true')
+            );
+            return {
+              id: card.id,
+              cardName: card.card_name,
+              bankName: card.bank_name,
+              billingDate: card.billing_date,
+              currentBill: Number(card.current_bill) || 0,
+              overdueAmount: Number((card as any).overdue_amount) || Number((card as any).overdueAmount) || 0,
+              lastPaidBillingDate: lastPaid || undefined,
+              isSharedLimit,
+              limitAmount: Number(card.limit_amount) || 0,
+              limitType: card.limit_type as CreditCardType['limitType'],
+              status: card.status as CreditCardType['status'],
+              notes: card.notes || '',
+              cardNumber: (card as any).card_number || (card as any).cardNumber || '',
+              expiryDate: (card as any).expiry_date || (card as any).expiryDate || '',
+              createdAt: card.created_at,
+            };
+          }));
+        }
 
-      // Fetch expenses
-      const { data: expensesData } = await supabase
-        .from('expenses')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (expensesData) {
-        setExpenses(expensesData.map(exp => ({
-          id: exp.id,
-          amount: Number(exp.amount),
-          date: exp.date,
-          category: exp.category as Expense['category'],
-          storeName: exp.store_name || undefined,
-          paymentMethod: exp.payment_method as Expense['paymentMethod'],
-          paymentSourceId: exp.payment_source_id,
-          paymentSourceName: exp.payment_source_name,
-          note: exp.note || undefined,
-          createdAt: exp.created_at,
-        })));
-      }
+        // 2. Fetch bank accounts
+        const { data: banksData } = await supabase
+          .from('bank_accounts')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (banksData) {
+          setBankAccounts(banksData.map(bank => ({
+            id: bank.id,
+            bankName: bank.bank_name,
+            balance: Number(bank.balance) || 0,
+            type: bank.type as BankAccount['type'],
+          })));
+        }
 
-      // Fetch lendings
-      const { data: lendingsData } = await supabase
-        .from('lendings')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (lendingsData) {
-        setLendings(lendingsData.map(l => ({
-          id: l.id,
-          personName: l.person_name,
-          amount: Number(l.amount),
-          givenDate: l.given_date,
-          reminderDate: l.reminder_date || undefined,
-          borrowerPhone: l.borrower_phone || undefined,
-          isReturned: l.is_returned || false,
-          note: l.note || undefined,
-          createdAt: l.created_at,
-        })));
+        // 3. Fetch expenses
+        const { data: expensesData } = await supabase
+          .from('expenses')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (expensesData) {
+          setExpenses(expensesData.map(exp => ({
+            id: exp.id,
+            amount: Number(exp.amount),
+            date: exp.date,
+            category: exp.category as Expense['category'],
+            storeName: exp.store_name || undefined,
+            paymentMethod: exp.payment_method as Expense['paymentMethod'],
+            paymentSourceId: exp.payment_source_id,
+            paymentSourceName: exp.payment_source_name,
+            note: exp.note || undefined,
+            createdAt: exp.created_at,
+          })));
+        }
+
+        // 4. Fetch lendings
+        const { data: lendingsData } = await supabase
+          .from('lendings')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (lendingsData) {
+          setLendings(lendingsData.map(l => ({
+            id: l.id,
+            personName: l.person_name,
+            amount: Number(l.amount),
+            givenDate: l.given_date,
+            reminderDate: l.reminder_date || undefined,
+            borrowerPhone: l.borrower_phone || undefined,
+            isReturned: l.is_returned || false,
+            note: l.note || undefined,
+            createdAt: l.created_at,
+          })));
+        }
+      } catch (err) {
+        console.warn('Network sync failed, keeping local cached data:', err);
       }
     };
 
@@ -1041,6 +1081,13 @@ const Index = () => {
         </div>
         
         <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-6 pb-6 md:pb-8">
+          {/* Offline Banner Indicator if offline */}
+          {typeof navigator !== 'undefined' && !navigator.onLine && (
+            <div className="bg-amber-500/90 text-white text-[11px] font-bold px-3 py-1.5 text-center rounded-xl shadow-md mb-3 flex items-center justify-center gap-1.5 animate-pulse border border-amber-300/40">
+              <span>⚡ Offline Mode — Application working instantly from local storage. Auto-syncs when online.</span>
+            </div>
+          )}
+
           {/* Top Bar */}
           <div className="flex items-center justify-between mb-4 md:mb-6">
             <div className="flex items-center gap-2 md:gap-3 min-w-0">

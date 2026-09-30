@@ -177,40 +177,7 @@ export const QuickExpenseDialog = ({
             />
           </div>
 
-          {/* Quick Store Pill Selection (Optional) */}
-          <div>
-            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
-              Store / Merchant <span className="text-[11px] font-normal text-muted-foreground lowercase">(optional)</span>
-            </Label>
-            <Input
-              type="text"
-              placeholder="e.g. Indian Oil, Swiggy, Amazon"
-              value={storeName}
-              onChange={(e) => setStoreName(e.target.value)}
-              className="h-10 rounded-xl border-border/80 text-sm mb-2"
-            />
-            {/* Popular Quick Store Pills */}
-            <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-1">
-              {(category === 'petrol'
-                ? ['Indian Oil', 'Bharat Petroleum', 'HP Fuel', 'Shell', 'Jio-bp']
-                : POPULAR_STORES
-              ).map((store) => (
-                <button
-                  key={store}
-                  type="button"
-                  onClick={() => setStoreName(store)}
-                  className={cn(
-                    "px-2.5 py-1 text-[11px] font-medium rounded-lg border transition-all",
-                    storeName === store
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-muted/40 hover:bg-muted text-muted-foreground border-border/40"
-                  )}
-                >
-                  {store}
-                </button>
-              ))}
-            </div>
-          </div>
+
 
           {/* Submit Button */}
           <Button 
