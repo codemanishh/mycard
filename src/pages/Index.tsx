@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CreditCard as CreditCardType, getCardBillStatus } from '@/types/creditCard';
 import { BankAccount, Expense, Lending } from '@/types/expense';
@@ -19,7 +19,7 @@ import { ProfileDialog } from '@/components/ProfileDialog';
 import { VoicePaymentDialog } from '@/components/VoicePaymentDialog';
 import TodoApp from '@/pages/TodoApp';
 import { Button } from '@/components/ui/button';
-import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic, CircleDot, PieChart } from 'lucide-react';
+import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic, CircleDot, PieChart, Fuel } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -56,6 +56,7 @@ const Index = () => {
     id: string;
     name: string;
   } | null>(null);
+  const [quickExpenseInitialCategory, setQuickExpenseInitialCategory] = useState<Expense['category']>('petrol');
   const [lendingDialogOpen, setLendingDialogOpen] = useState(false);
   const [editingLending, setEditingLending] = useState<Lending | null>(null);
   const [bankEditDialogOpen, setBankEditDialogOpen] = useState(false);
@@ -894,6 +895,7 @@ const Index = () => {
   };
 
   const handleQuickExpenseFromBank = (bank: BankAccount) => {
+    setQuickExpenseInitialCategory('petrol');
     setQuickExpenseSource({
       type: 'bank',
       id: bank.id,
@@ -903,6 +905,7 @@ const Index = () => {
   };
 
   const handleQuickExpenseFromCard = (card: CreditCardType) => {
+    setQuickExpenseInitialCategory('petrol');
     setQuickExpenseSource({
       type: 'credit_card',
       id: card.id,
@@ -910,6 +913,65 @@ const Index = () => {
     });
     setQuickExpenseDialogOpen(true);
   };
+
+  const handleAddPetrolSpend = () => {
+    setQuickExpenseInitialCategory('petrol');
+    if (cards.length > 0) {
+      setQuickExpenseSource({
+        type: 'credit_card',
+        id: cards[0].id,
+        name: `${cards[0].bankName} ${cards[0].cardName}`,
+      });
+    } else if (bankAccounts.length > 0) {
+      setQuickExpenseSource({
+        type: 'bank',
+        id: bankAccounts[0].id,
+        name: bankAccounts[0].bankName,
+      });
+    } else {
+      toast({
+        title: 'No Payment Method',
+        description: 'Please add a credit card or bank account first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setQuickExpenseDialogOpen(true);
+  };
+
+  const petrolSpendStats = useMemo(() => {
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    let monthSpend = 0;
+    let ytdSpend = 0;
+    let countThisMonth = 0;
+
+    expenses.forEach((exp) => {
+      const isPetrol = exp.category === 'petrol' || 
+        (exp.storeName && /petrol|fuel|indian oil|bharat petroleum|hp fuel|shell|jio-bp/i.test(exp.storeName)) ||
+        (exp.note && /petrol|fuel/i.test(exp.note));
+
+      if (isPetrol) {
+        const parts = exp.date.split('-');
+        if (parts.length === 3) {
+          const expYear = parseInt(parts[0], 10);
+          const expMonth = parseInt(parts[1], 10) - 1;
+
+          if (expYear === currentYear) {
+            ytdSpend += exp.amount;
+            if (expMonth === currentMonth) {
+              monthSpend += exp.amount;
+              countThisMonth++;
+            }
+          }
+        }
+      }
+    });
+
+    return { monthSpend, ytdSpend, countThisMonth };
+  }, [expenses]);
 
   const handleUpdateBankBalance = async (bankId: string, newBalance: number) => {
     const { error } = await supabase
@@ -1234,6 +1296,7 @@ const Index = () => {
                     card={card}
                     cards={cards}
                     onClick={handleCardClick}
+                    onAddExpense={handleQuickExpenseFromCard}
                     index={index}
                     expenses={expenses}
                   />
@@ -1404,6 +1467,7 @@ const Index = () => {
         onOpenChange={setQuickExpenseDialogOpen}
         onSave={handleAddExpense}
         paymentSource={quickExpenseSource}
+        initialCategory={quickExpenseInitialCategory}
       />
 
       <VoicePaymentDialog

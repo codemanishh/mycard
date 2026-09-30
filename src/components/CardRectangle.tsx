@@ -2,18 +2,20 @@ import { CreditCard as CreditCardType, getCardBillStatus, getCardLimitAndUtiliza
 import { Expense } from '@/types/expense';
 import { BankLogo, getBankColor } from '@/components/BankLogo';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, CheckCircle2, Share2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Share2, Plus } from 'lucide-react';
 
 interface CardRectangleProps {
   card: CreditCardType;
   cards?: CreditCardType[];
   onClick: (card: CreditCardType) => void;
+  onAddExpense?: (card: CreditCardType) => void;
   index: number;
   expenses?: Expense[];
 }
 
-export const CardRectangle = ({ card, cards = [], onClick, index, expenses }: CardRectangleProps) => {
+export const CardRectangle = ({ card, cards = [], onClick, onAddExpense, index, expenses }: CardRectangleProps) => {
   const status = getCardBillStatus(card, expenses);
   const limitInfo = getCardLimitAndUtilization(card, cards, expenses);
   const bankColor = getBankColor(card.bankName);
@@ -26,7 +28,7 @@ export const CardRectangle = ({ card, cards = [], onClick, index, expenses }: Ca
       onClick={() => onClick(card)}
       style={{ animationDelay: `${index * 0.05}s` }}
       className={cn(
-        "group relative rounded-2xl p-3 transition-all duration-300 cursor-pointer overflow-hidden border shadow-sm hover:shadow-md",
+        "group relative rounded-2xl p-3.5 transition-all duration-300 cursor-pointer overflow-hidden border shadow-sm hover:shadow-md",
         "bg-card/90 backdrop-blur-xl hover:-translate-y-0.5 active:scale-[0.99]",
         hasOverdue
           ? "border-red-500/50 ring-1 ring-red-500/30"
@@ -40,8 +42,8 @@ export const CardRectangle = ({ card, cards = [], onClick, index, expenses }: Ca
       />
 
       {/* Unified Compact Div Container */}
-      <div className="flex flex-col gap-2">
-        {/* Header Row: Bank Logo + Title & Bank + Badge */}
+      <div className="flex flex-col gap-2.5">
+        {/* Header Row (1st Div): Bank Logo + Title & Bank + Icon Button + Badge */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <BankLogo bankName={card.bankName} size="sm" className="shadow-xs border border-border/40 shrink-0" />
@@ -60,30 +62,47 @@ export const CardRectangle = ({ card, cards = [], onClick, index, expenses }: Ca
             </div>
           </div>
 
-          <Badge 
-            className={cn(
-              "text-[10px] px-2 py-0.5 font-extrabold rounded-full border shrink-0 transition-all",
-              hasOverdue 
-                ? "bg-red-600 text-white border-red-400 animate-pulse" 
-                : status.daysLeft <= 5 
-                  ? "bg-amber-500 text-white border-amber-300"
-                  : "bg-emerald-500 text-white border-emerald-300"
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onAddExpense && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddExpense(card);
+                }}
+                title="Add Spend to Card"
+                className="h-7 w-7 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-white transition-all border border-primary/20 shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              </Button>
             )}
-          >
-            {hasOverdue ? (
-              <span className="flex items-center gap-0.5">
-                <AlertTriangle className="w-3 h-3" /> {status.statusLabel}
-              </span>
-            ) : (
-              <span className="flex items-center gap-0.5">
-                <CheckCircle2 className="w-3 h-3" /> {status.statusLabel}
-              </span>
-            )}
-          </Badge>
+
+            <Badge 
+              className={cn(
+                "text-[10px] px-2 py-0.5 font-extrabold rounded-full border shrink-0 transition-all",
+                hasOverdue 
+                  ? "bg-red-600 text-white border-red-400 animate-pulse" 
+                  : status.daysLeft <= 5 
+                    ? "bg-amber-500 text-white border-amber-300"
+                    : "bg-emerald-500 text-white border-emerald-300"
+              )}
+            >
+              {hasOverdue ? (
+                <span className="flex items-center gap-0.5">
+                  <AlertTriangle className="w-3 h-3" /> {status.statusLabel}
+                </span>
+              ) : (
+                <span className="flex items-center gap-0.5">
+                  <CheckCircle2 className="w-3 h-3" /> {status.statusLabel}
+                </span>
+              )}
+            </Badge>
+          </div>
         </div>
 
         {/* Breakdown Amounts Row (In-Line Compact Badges) */}
-        <div className="flex items-center gap-2 pt-1.5 border-t border-border/30 text-xs">
+        <div className="flex items-center gap-2 text-xs">
           <div className={cn(
             "flex-1 flex items-center justify-between px-2.5 py-1 rounded-lg border transition-colors",
             hasOverdue ? "bg-red-500/10 border-red-500/30" : "bg-muted/30 border-border/30"

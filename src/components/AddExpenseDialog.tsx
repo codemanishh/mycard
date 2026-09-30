@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Expense, EXPENSE_CATEGORIES, POPULAR_STORES, BankAccount } from '@/types/expense';
 import { CreditCard as CreditCardType } from '@/types/creditCard';
+import { cn } from '@/lib/utils';
 
 interface AddExpenseDialogProps {
   open: boolean;
@@ -86,19 +87,30 @@ export const AddExpenseDialog = ({
           </div>
 
           <div>
-            <Label>Category</Label>
-            <Select value={category} onValueChange={(v) => setCategory(v as Expense['category'])}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPENSE_CATEGORIES.map((cat) => (
-                  <SelectItem key={cat.value} value={cat.value}>
-                    {cat.emoji} {cat.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              Category
+            </Label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {EXPENSE_CATEGORIES.map((cat) => {
+                const isSelected = category === cat.value;
+                return (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => setCategory(cat.value as Expense['category'])}
+                    className={cn(
+                      "flex items-center gap-2 p-2 rounded-xl border text-left text-xs font-medium transition-all",
+                      isSelected
+                        ? "bg-primary/10 border-primary text-primary font-bold ring-1 ring-primary/30"
+                        : "bg-background border-border/60 hover:bg-muted text-foreground"
+                    )}
+                  >
+                    <span>{cat.emoji}</span>
+                    <span className="truncate">{cat.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div>

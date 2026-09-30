@@ -9,7 +9,7 @@ export interface Expense {
   id: string;
   amount: number;
   date: string;
-  category: 'food' | 'shopping' | 'bills' | 'transport' | 'entertainment' | 'other';
+  category: 'petrol' | 'food' | 'shopping' | 'bills' | 'transport' | 'entertainment' | 'other';
   storeName?: string;
   paymentMethod: 'bank' | 'credit_card';
   paymentSourceId: string; // bank account id or credit card id
@@ -31,6 +31,7 @@ export interface Lending {
 }
 
 export const EXPENSE_CATEGORIES = [
+  { value: 'petrol', label: 'Petrol / Fuel', emoji: '⛽' },
   { value: 'food', label: 'Food', emoji: '🍔' },
   { value: 'shopping', label: 'Shopping', emoji: '🛒' },
   { value: 'bills', label: 'Bills', emoji: '📄' },
@@ -40,6 +41,7 @@ export const EXPENSE_CATEGORIES = [
 ] as const;
 
 export const POPULAR_STORES = [
+  'Indian Oil', 'Bharat Petroleum', 'HP Fuel', 'Shell',
   'Flipkart', 'Amazon', 'BigBasket', 'Swiggy', 'Zomato', 
   'DMart', 'Reliance Fresh', 'More', 'Blinkit', 'Zepto'
 ];
