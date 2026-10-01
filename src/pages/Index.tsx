@@ -985,8 +985,11 @@ const Index = () => {
     const currentYear = today.getFullYear();
 
     let monthSpend = 0;
+    let yearSpend = 0;
     let ytdSpend = 0;
     let countThisMonth = 0;
+    let countThisYear = 0;
+    let totalCount = 0;
 
     expenses.forEach((exp) => {
       const isPetrol = exp.category === 'petrol' || 
@@ -994,23 +997,26 @@ const Index = () => {
         (exp.note && /petrol|fuel/i.test(exp.note));
 
       if (isPetrol) {
+        totalCount++;
         const parts = exp.date.split('-');
         if (parts.length === 3) {
           const expYear = parseInt(parts[0], 10);
           const expMonth = parseInt(parts[1], 10) - 1;
 
           if (expYear === currentYear) {
-            ytdSpend += exp.amount;
+            yearSpend += exp.amount;
+            countThisYear++;
             if (expMonth === currentMonth) {
               monthSpend += exp.amount;
               countThisMonth++;
             }
           }
         }
+        ytdSpend += exp.amount;
       }
     });
 
-    return { monthSpend, ytdSpend, countThisMonth };
+    return { monthSpend, yearSpend, ytdSpend, countThisMonth, countThisYear, totalCount };
   }, [expenses]);
 
   const handleUpdateBankBalance = async (bankId: string, newBalance: number) => {
@@ -1151,8 +1157,14 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Bank Balances */}
-          <BankBalanceCard accounts={bankAccounts} totalBills={totalBill} onBankClick={handleQuickExpenseFromBank} />
+          {/* Bank Balances & Fuel Spend Carousel */}
+          <BankBalanceCard 
+            accounts={bankAccounts} 
+            totalBills={totalBill} 
+            onBankClick={handleQuickExpenseFromBank}
+            petrolStats={petrolSpendStats}
+            onAddFuelSpend={handleAddPetrolSpend}
+          />
           <div className="flex gap-2 mt-2 md:mt-3">
             <Button 
               onClick={() => setBankAddDialogOpen(true)}

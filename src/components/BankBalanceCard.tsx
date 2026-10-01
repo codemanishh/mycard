@@ -1,14 +1,23 @@
 import { BankAccount } from '@/types/expense';
 import { Wallet, TrendingUp } from 'lucide-react';
 import { BankLogo } from './BankLogo';
+import { FuelSpendCarouselCard, FuelSpendStats } from './FuelSpendCarouselCard';
 
 interface BankBalanceCardProps {
   accounts: BankAccount[];
   totalBills?: number;
   onBankClick?: (bank: BankAccount) => void;
+  petrolStats?: FuelSpendStats;
+  onAddFuelSpend?: () => void;
 }
 
-export const BankBalanceCard = ({ accounts, totalBills = 0, onBankClick }: BankBalanceCardProps) => {
+export const BankBalanceCard = ({ 
+  accounts, 
+  totalBills = 0, 
+  onBankClick,
+  petrolStats,
+  onAddFuelSpend,
+}: BankBalanceCardProps) => {
   const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
   const actualBalance = totalBalance - totalBills;
   
@@ -43,8 +52,8 @@ export const BankBalanceCard = ({ accounts, totalBills = 0, onBankClick }: BankB
         </div>
       </div>
       
-      {/* Individual Banks */}
-      {accounts.length > 0 && (
+      {/* Individual Banks & Fuel Spend Tile */}
+      {(accounts.length > 0 || petrolStats) && (
         <div className="grid grid-cols-2 gap-2 md:gap-3">
           {accounts.map((account) => (
             <button 
@@ -61,8 +70,13 @@ export const BankBalanceCard = ({ accounts, totalBills = 0, onBankClick }: BankB
               </div>
             </button>
           ))}
+
+          {/* Swipeable Fuel Spend Carousel Tile (Exact size of a bank card item) */}
+          {petrolStats && (
+            <FuelSpendCarouselCard stats={petrolStats} onAddFuelSpend={onAddFuelSpend} />
+          )}
         </div>
       )}
     </div>
   );
-};
+};
