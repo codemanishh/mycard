@@ -90,7 +90,7 @@ const Index = () => {
     id: string;
     name: string;
   } | null>(null);
-  const [quickExpenseInitialCategory, setQuickExpenseInitialCategory] = useState<Expense['category']>('petrol');
+  const [quickExpenseInitialCategory, setQuickExpenseInitialCategory] = useState<Expense['category']>('food');
   const [lendingDialogOpen, setLendingDialogOpen] = useState(false);
   const [editingLending, setEditingLending] = useState<Lending | null>(null);
   const [bankEditDialogOpen, setBankEditDialogOpen] = useState(false);
@@ -935,7 +935,7 @@ const Index = () => {
   };
 
   const handleQuickExpenseFromBank = (bank: BankAccount) => {
-    setQuickExpenseInitialCategory('petrol');
+    setQuickExpenseInitialCategory('food');
     setQuickExpenseSource({
       type: 'bank',
       id: bank.id,
@@ -945,7 +945,7 @@ const Index = () => {
   };
 
   const handleQuickExpenseFromCard = (card: CreditCardType) => {
-    setQuickExpenseInitialCategory('petrol');
+    setQuickExpenseInitialCategory('food');
     setQuickExpenseSource({
       type: 'credit_card',
       id: card.id,

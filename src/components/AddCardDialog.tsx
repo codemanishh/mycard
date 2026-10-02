@@ -23,69 +23,54 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [formData, setFormData] = useState<{
-    bankName: string;
-    cardName: string;
-    billingDate: number;
-    currentBill: number;
-    overdueAmount: number;
-    status: 'active' | 'blocked' | 'inactive';
-    limitType: 'monthly' | 'per-transaction' | 'full-card';
-    limitAmount: number;
-    isSharedLimit: boolean;
-    cardNumber: string;
-    expiryDate: string;
-    notes: string;
-  }>({
-    bankName: '',
-    cardName: '',
-    billingDate: 1,
-    currentBill: 0,
-    overdueAmount: 0,
-    status: 'active',
-    limitType: 'monthly',
-    limitAmount: 0,
-    isSharedLimit: false,
-    cardNumber: '',
-    expiryDate: '',
-    notes: '',
-  });
+  
+  const [bankName, setBankName] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  
+  // Clean string states for numbers (no HTML5 spinner arrows, no leading 0 bugs like 0999 or 077)
+  const [billingDateStr, setBillingDateStr] = useState('1');
+  const [currentBillStr, setCurrentBillStr] = useState('');
+  const [overdueAmountStr, setOverdueAmountStr] = useState('');
+  const [limitAmountStr, setLimitAmountStr] = useState('');
+  
+  const [status, setStatus] = useState<'active' | 'blocked' | 'inactive'>('active');
+  const [limitType, setLimitType] = useState<'monthly' | 'per-transaction' | 'full-card'>('monthly');
+  const [isSharedLimit, setIsSharedLimit] = useState(false);
+  const [notes, setNotes] = useState('');
 
   useEffect(() => {
     if (editCard) {
-      setFormData({
-        bankName: editCard.bankName,
-        cardName: editCard.cardName,
-        billingDate: editCard.billingDate,
-        currentBill: editCard.currentBill,
-        overdueAmount: editCard.overdueAmount || 0,
-        status: editCard.status,
-        limitType: editCard.limitType,
-        limitAmount: editCard.limitAmount,
-        isSharedLimit: Boolean(
-          editCard.isSharedLimit ||
-          (editCard.notes && editCard.notes.includes('[SHARED_LIMIT:true]')) ||
-          (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${editCard.id}`) === 'true')
-        ),
-        cardNumber: editCard.cardNumber || '',
-        expiryDate: editCard.expiryDate || '',
-        notes: editCard.notes || '',
-      });
+      setBankName(editCard.bankName || '');
+      setCardName(editCard.cardName || '');
+      setCardNumber(editCard.cardNumber || '');
+      setExpiryDate(editCard.expiryDate || '');
+      setBillingDateStr(String(editCard.billingDate || 1));
+      setCurrentBillStr(editCard.currentBill ? String(editCard.currentBill) : '');
+      setOverdueAmountStr(editCard.overdueAmount ? String(editCard.overdueAmount) : '');
+      setLimitAmountStr(editCard.limitAmount ? String(editCard.limitAmount) : '');
+      setStatus(editCard.status || 'active');
+      setLimitType(editCard.limitType || 'monthly');
+      setIsSharedLimit(Boolean(
+        editCard.isSharedLimit ||
+        (editCard.notes && editCard.notes.includes('[SHARED_LIMIT:true]')) ||
+        (typeof window !== 'undefined' && localStorage.getItem(`card_shared_limit_${editCard.id}`) === 'true')
+      ));
+      setNotes(editCard.notes || '');
     } else {
-      setFormData({
-        bankName: '',
-        cardName: '',
-        billingDate: 1,
-        currentBill: 0,
-        overdueAmount: 0,
-        status: 'active',
-        limitType: 'monthly',
-        limitAmount: 0,
-        isSharedLimit: false,
-        cardNumber: '',
-        expiryDate: '',
-        notes: '',
-      });
+      setBankName('');
+      setCardName('');
+      setCardNumber('');
+      setExpiryDate('');
+      setBillingDateStr('1');
+      setCurrentBillStr('');
+      setOverdueAmountStr('');
+      setLimitAmountStr('');
+      setStatus('active');
+      setLimitType('monthly');
+      setIsSharedLimit(false);
+      setNotes('');
     }
     setSearchQuery('');
     setSelectedCategory('all');
@@ -100,7 +85,7 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.bankName || !formData.cardName) {
+    if (!bankName || !cardName) {
       toast({
         title: 'Missing Information',
         description: 'Please fill in all required fields.',
@@ -109,11 +94,27 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
       return;
     }
 
-    onSave(formData);
+    const billingDateNum = Math.min(31, Math.max(1, parseInt(billingDateStr, 10) || 1));
+
+    onSave({
+      bankName,
+      cardName,
+      cardNumber,
+      expiryDate,
+      billingDate: billingDateNum,
+      currentBill: parseFloat(currentBillStr) || 0,
+      overdueAmount: parseFloat(overdueAmountStr) || 0,
+      limitAmount: parseFloat(limitAmountStr) || 0,
+      status,
+      limitType,
+      isSharedLimit,
+      notes,
+    });
+
     onOpenChange(false);
     toast({
       title: editCard ? 'Card Updated' : 'Card Added',
-      description: `${formData.cardName} has been ${editCard ? 'updated' : 'added'} successfully.`,
+      description: `${cardName} has been ${editCard ? 'updated' : 'added'} successfully.`,
     });
   };
 
@@ -164,9 +165,9 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
                 <button
                   key={bank.name}
                   type="button"
-                  onClick={() => setFormData({ ...formData, bankName: bank.name })}
+                  onClick={() => setBankName(bank.name)}
                   className={`w-full flex items-center gap-3 p-2 rounded-lg transition-colors text-left ${
-                    formData.bankName === bank.name 
+                    bankName === bank.name 
                       ? 'bg-primary/10 border border-primary/30' 
                       : 'hover:bg-secondary'
                   }`}
@@ -180,10 +181,10 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               )}
             </div>
 
-            {formData.bankName && (
+            {bankName && (
               <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-lg border border-primary/20">
-                <BankLogo bankName={formData.bankName} size="sm" />
-                <span className="text-sm font-medium">{formData.bankName}</span>
+                <BankLogo bankName={bankName} size="sm" />
+                <span className="text-sm font-medium">{bankName}</span>
               </div>
             )}
           </div>
@@ -193,8 +194,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             <Input
               id="cardName"
               placeholder="e.g., Coral, Amazon Pay, Regalia"
-              value={formData.cardName}
-              onChange={(e) => setFormData({ ...formData, cardName: e.target.value })}
+              value={cardName}
+              onChange={(e) => setCardName(e.target.value)}
               className="rounded-xl"
               required
             />
@@ -207,8 +208,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               <Input
                 id="cardNumber"
                 placeholder="4532 8912 3456 7890"
-                value={formData.cardNumber}
-                onChange={(e) => setFormData({ ...formData, cardNumber: e.target.value })}
+                value={cardNumber}
+                onChange={(e) => setCardNumber(e.target.value)}
                 className="rounded-xl font-mono text-xs"
               />
             </div>
@@ -217,38 +218,61 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               <Input
                 id="expiryDate"
                 placeholder="08/28"
-                value={formData.expiryDate}
-                onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
                 className="rounded-xl font-mono text-xs"
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="billingDate">Billing Date (Day of Month) *</Label>
+          {/* Billing Date (Day of Month: 1 - 31) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="billingDate" className="text-xs font-semibold">Billing Date (Day of Month) *</Label>
+              <span className="text-[10px] text-muted-foreground font-medium">1 to 31 max</span>
+            </div>
             <Input
               id="billingDate"
-              type="number"
-              min="1"
-              max="31"
-              value={formData.billingDate}
-              onChange={(e) => setFormData({ ...formData, billingDate: parseInt(e.target.value) || 1 })}
-              className="rounded-xl"
+              type="text"
+              inputMode="numeric"
+              placeholder="1 - 31"
+              value={billingDateStr}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '');
+                if (digits === '') {
+                  setBillingDateStr('');
+                  return;
+                }
+                let num = parseInt(digits, 10);
+                if (num > 31) num = 31;
+                setBillingDateStr(String(num));
+              }}
+              onBlur={() => {
+                if (!billingDateStr || parseInt(billingDateStr, 10) < 1) {
+                  setBillingDateStr('1');
+                }
+              }}
+              className="rounded-xl font-mono text-sm"
               required
             />
           </div>
 
+          {/* Amounts (Current Month Bill & Overdue Bill) */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="currentBill" className="text-xs font-medium">Current Month Bill (₹)</Label>
               <Input
                 id="currentBill"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={formData.currentBill}
-                onChange={(e) => setFormData({ ...formData, currentBill: parseFloat(e.target.value) || 0 })}
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={currentBillStr}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setCurrentBillStr(val);
+                  }
+                }}
                 className="rounded-xl font-mono text-xs"
               />
             </div>
@@ -258,12 +282,16 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
               </Label>
               <Input
                 id="overdueAmount"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={formData.overdueAmount}
-                onChange={(e) => setFormData({ ...formData, overdueAmount: parseFloat(e.target.value) || 0 })}
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={overdueAmountStr}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (/^\d*\.?\d*$/.test(val)) {
+                    setOverdueAmountStr(val);
+                  }
+                }}
                 className="rounded-xl font-mono text-xs text-red-500 border-red-500/30 focus:border-red-500"
               />
             </div>
@@ -273,8 +301,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             <div className="space-y-2">
               <Label htmlFor="status">Card Status</Label>
               <Select 
-                value={formData.status} 
-                onValueChange={(value: any) => setFormData({ ...formData, status: value })}
+                value={status} 
+                onValueChange={(value: any) => setStatus(value)}
               >
                 <SelectTrigger className="rounded-xl">
                   <SelectValue />
@@ -290,8 +318,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             <div className="space-y-2">
               <Label htmlFor="limitType">Limit Type</Label>
               <Select 
-                value={formData.limitType} 
-                onValueChange={(value: any) => setFormData({ ...formData, limitType: value })}
+                value={limitType} 
+                onValueChange={(value: any) => setLimitType(value)}
               >
                 <SelectTrigger className="rounded-xl">
                   <SelectValue />
@@ -305,16 +333,22 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             </div>
           </div>
 
+          {/* Limit Amount */}
           <div className="space-y-2">
             <Label htmlFor="limitAmount">Limit Amount (₹)</Label>
             <Input
               id="limitAmount"
-              type="number"
-              min="0"
+              type="text"
+              inputMode="decimal"
               placeholder="0"
-              value={formData.limitAmount}
-              onChange={(e) => setFormData({ ...formData, limitAmount: parseFloat(e.target.value) || 0 })}
-              className="rounded-xl"
+              value={limitAmountStr}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^\d*\.?\d*$/.test(val)) {
+                  setLimitAmountStr(val);
+                }
+              }}
+              className="rounded-xl font-mono text-sm"
             />
           </div>
 
@@ -322,10 +356,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
           <div className="flex items-start space-x-3 p-3 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-2xl">
             <Checkbox
               id="isSharedLimit"
-              checked={formData.isSharedLimit}
-              onCheckedChange={(checked) =>
-                setFormData({ ...formData, isSharedLimit: Boolean(checked) })
-              }
+              checked={isSharedLimit}
+              onCheckedChange={(checked) => setIsSharedLimit(Boolean(checked))}
               className="mt-0.5"
             />
             <div className="space-y-1">
@@ -334,10 +366,10 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
                 className="text-xs font-bold text-foreground cursor-pointer flex items-center gap-1.5"
               >
                 <Share2 className="w-3.5 h-3.5 text-primary" />
-                Shared Limit across {formData.bankName || 'same bank'} cards
+                Shared Limit across {bankName || 'same bank'} cards
               </Label>
               <p className="text-[11px] text-muted-foreground leading-snug">
-                Check this if your cards from {formData.bankName || 'this bank'} share a single credit limit. Limits and credit utilization ratio will be calculated across all shared cards of this bank.
+                Check this if your cards from {bankName || 'this bank'} share a single credit limit. Limits and credit utilization ratio will be calculated across all shared cards of this bank.
               </p>
             </div>
           </div>
@@ -347,8 +379,8 @@ export const AddCardDialog = ({ open, onOpenChange, onSave, editCard }: AddCardD
             <Textarea
               id="notes"
               placeholder="Add any additional notes..."
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               rows={2}
               className="rounded-xl"
             />

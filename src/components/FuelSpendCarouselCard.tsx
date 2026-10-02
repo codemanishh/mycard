@@ -127,20 +127,6 @@ export const FuelSpendCarouselCard: React.FC<FuelSpendCarouselCardProps> = ({
                       <p className="text-xs md:text-sm font-bold font-mono text-white truncate leading-none">
                         ₹{slide.amount.toLocaleString('en-IN')}
                       </p>
-
-                      {onAddFuelSpend && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAddFuelSpend();
-                          }}
-                          className="p-0.5 rounded-md bg-amber-500/30 hover:bg-amber-500/60 text-amber-100 border border-amber-400/40 transition-all active:scale-90 shrink-0"
-                          title="Add Petrol / Fuel Spend"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>

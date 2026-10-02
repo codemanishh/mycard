@@ -25,7 +25,7 @@ export const QuickExpenseDialog = ({
   onOpenChange, 
   onSave, 
   paymentSource,
-  initialCategory = 'petrol'
+  initialCategory = 'food'
 }: QuickExpenseDialogProps) => {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -34,7 +34,7 @@ export const QuickExpenseDialog = ({
 
   useEffect(() => {
     if (open) {
-      setCategory(initialCategory || 'petrol');
+      setCategory(initialCategory || 'food');
     }
   }, [open, initialCategory]);
 
@@ -54,12 +54,14 @@ export const QuickExpenseDialog = ({
     // Reset form
     setAmount('');
     setDate(new Date().toISOString().split('T')[0]);
-    setCategory('petrol');
+    setCategory('food');
     setStoreName('');
     onOpenChange(false);
   };
 
   if (!paymentSource) return null;
+
+  const currentCatInfo = EXPENSE_CATEGORIES.find(c => c.value === category);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -129,9 +131,9 @@ export const QuickExpenseDialog = ({
               <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
                 Select Category <span className="text-primary font-normal text-[11px] lowercase">(tap to select)</span>
               </Label>
-              {category === 'petrol' && (
-                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                  <Fuel className="w-3 h-3" /> Petrol / Fuel
+              {currentCatInfo && (
+                <span className="text-[11px] font-semibold text-primary flex items-center gap-1">
+                  <span>{currentCatInfo.emoji}</span> {currentCatInfo.label}
                 </span>
               )}
             </div>

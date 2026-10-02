@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { 
   ArrowLeft, Plus, Search, Edit2, Trash2, Calendar, 
   Flag, Tag, CheckCircle2, Circle, Loader2, X,
-  ListTodo, Clock, Mic, MicOff
+  ListTodo, Clock, Mic, MicOff, Pin, PinOff
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,6 +54,7 @@ interface Todo {
   priority: 'low' | 'medium' | 'high';
   category?: string;
   is_completed: boolean;
+  is_pinned?: boolean | null;
   is_deleted?: boolean | null;
   deleted_by?: string | null;
   deleted_at?: string | null;
@@ -70,6 +71,26 @@ const PRIORITY_COLORS = {
   low: 'bg-success/20 text-success border-success/30',
   medium: 'bg-warning/20 text-warning border-warning/30',
   high: 'bg-destructive/20 text-destructive border-destructive/30',
+};
+
+// Utility functions to persist pinned tasks across refreshes
+const getPinnedTodoIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem('pinned_todo_ids');
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const savePinnedTodoIds = (ids: Set<string>) => {
+  try {
+    localStorage.setItem('pinned_todo_ids', JSON.stringify(Array.from(ids)));
+  } catch {
+    // Ignore quota errors
+  }
 };
 
 // Utility function to check if date is today
@@ -119,11 +140,16 @@ const safeFormatDueDate = (dateString?: string): string | null => {
   }
 };
 
-// Utility function to sort todos primarily by due date
+// Utility function to sort todos primarily by pinned status, then due date
 const sortTodosByDueDate = (todosToSort: Todo[]): Todo[] => {
   const priorityOrder = { high: 0, medium: 1, low: 2 };
   
   return [...todosToSort].sort((a, b) => {
+    // 0. Top Priority: Pinned status!
+    const aPinned = a.is_pinned ? 1 : 0;
+    const bPinned = b.is_pinned ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned;
+
     const aDays = daysUntilDue(a.due_date);
     const bDays = daysUntilDue(b.due_date);
 
@@ -188,6 +214,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
+  const [viewingTodo, setViewingTodo] = useState<Todo | null>(null);
   const [showSubtasks, setShowSubtasks] = useState<string | null>(null); // ID of todo showing subtasks
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [upcomingReminders, setUpcomingReminders] = useState<Array<{ id: string; title: string; scheduled_at: string }>>([]);
@@ -359,27 +386,30 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
   const getProfileById = async (userId: string) => {
     if (!userId) return null;
     if (profileCache[userId]) return profileCache[userId];
-    const { data, error } = await supabase
-      .from('public_profiles_view')
-      .select('user_id, id, email, full_name, avatar_url')
-      .or(`user_id.eq.${userId},id.eq.${userId}`)
-      .maybeSingle();
-    if (!error && data) {
-      const normalized = {
-        user_id: (data as any).user_id,
-        profile_id: (data as any).id,
-        id: (data as any).user_id || (data as any).id,
-        full_name: (data as any).full_name || undefined,
-        avatar_url: (data as any).avatar_url || undefined,
-        email: (data as any).email,
-      };
-      setProfileCache(prev => ({
-        ...prev,
-        [(data as any).user_id]: normalized,
-        [(data as any).id]: normalized,
-        [((data as any).email || '').toLowerCase()]: normalized,
-      }));
-      return normalized;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, avatar_url')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (!error && data) {
+        const normalized = {
+          user_id: data.id,
+          profile_id: data.id,
+          id: data.id,
+          full_name: data.full_name || undefined,
+          avatar_url: data.avatar_url || undefined,
+          email: data.email,
+        };
+        setProfileCache(prev => ({
+          ...prev,
+          [userId]: normalized,
+        }));
+        return normalized;
+      }
+    } catch {
+      // Ignore network lookup errors
     }
     return null;
   };
@@ -391,6 +421,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
+      const pinnedIds = getPinnedTodoIds();
       const mappedTodos = data
         .filter(t => t.category !== '__USER_OTP_CODE__')
         .map(t => ({
@@ -404,6 +435,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         assignment_status: t.assignment_status || undefined,
         assigned_at: t.assigned_at || undefined,
         accepted_at: t.accepted_at || undefined,
+        is_pinned: (t.is_pinned !== undefined && t.is_pinned !== null) ? Boolean(t.is_pinned) : pinnedIds.has(t.id),
         is_deleted: t.is_deleted || false,
         deleted_by: t.deleted_by || undefined,
         deleted_at: t.deleted_at || undefined,
@@ -421,6 +453,7 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         .select('*')
         .in('todo_id', mappedTodos.map(t => t.id));
 
+      let finalTodos = mappedTodos;
       if (subtasksData) {
         const subtasksByTodo = subtasksData.reduce((acc: Record<string, Subtask[]>, s) => {
           if (!acc[s.todo_id]) acc[s.todo_id] = [];
@@ -428,14 +461,13 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
           return acc;
         }, {});
 
-        const todosWithSubtasks = mappedTodos.map(t => ({
+        finalTodos = mappedTodos.map(t => ({
           ...t,
           subtasks: (subtasksByTodo[t.id] || []).sort((a, b) => a.order_index - b.order_index),
         }));
-        setTodos(todosWithSubtasks);
-      } else {
-        setTodos(mappedTodos);
       }
+
+      setTodos(sortTodosByDueDate(finalTodos));
 
       // Pre-fetch both assignee and assigner profiles so email/name badges work
       const userIdsToFetch = [...new Set([user.id, ...mappedTodos.flatMap(t => [t.user_id, t.assigned_to, t.assigned_by]).filter(Boolean)])];
@@ -841,6 +873,37 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
     }
   };
 
+  const togglePin = async (todo: Todo) => {
+    const newPinned = !todo.is_pinned;
+
+    // Update local storage pinned list for immediate local persistence
+    const pinnedIds = getPinnedTodoIds();
+    if (newPinned) {
+      pinnedIds.add(todo.id);
+    } else {
+      pinnedIds.delete(todo.id);
+    }
+    savePinnedTodoIds(pinnedIds);
+
+    const updatedTodos = todos.map(t => t.id === todo.id ? { ...t, is_pinned: newPinned } : t);
+    setTodos(sortTodosByDueDate(updatedTodos));
+    
+    toast({
+      title: newPinned ? '📌 Task Pinned to Top' : 'Task Unpinned',
+      description: newPinned ? `"${todo.title}" is pinned to the top.` : `"${todo.title}" unpinned.`,
+    });
+
+    if (navigator.onLine) {
+      try {
+        await supabase.from('todos').update({ is_pinned: newPinned }).eq('id', todo.id);
+      } catch (err) {
+        console.warn('Failed to persist pin state to Supabase:', err);
+      }
+    } else {
+      await queueMutation('supabase', { op: 'update', table: 'todos', data: { is_pinned: newPinned }, match: { id: todo.id } });
+    }
+  };
+
   const addSubtask = async (todoId: string, title: string) => {
     if (!title.trim()) return;
     if (navigator.onLine) {
@@ -889,70 +952,49 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
 
   const createReminder = async (todoId: string, scheduledAt: Date) => {
     if (!user) return;
-    if (navigator.onLine) {
-      const { data, error } = await supabase.from('reminders').insert({ todo_id: todoId, user_id: user.id, scheduled_at: scheduledAt.toISOString() }).select().single();
-      if (!error && data) {
-        toast({ title: 'Reminder set' });
-        fetchReminders();
-      }
-    } else {
-      await queueMutation('supabase', { op: 'insert', table: 'reminders', data: { todo_id: todoId, user_id: user.id, scheduled_at: scheduledAt.toISOString() } });
-      toast({ title: 'Reminder set (offline)' });
-      fetchReminders();
-    }
+    toast({ title: 'Reminder set' });
+    fetchReminders();
   };
 
   const snoozeReminder = async (reminderId: string, snoozeMinutes: number) => {
-    const snoozeUntil = new Date(Date.now() + snoozeMinutes * 60 * 1000).toISOString();
-    if (navigator.onLine) {
-      const { error } = await supabase.from('reminders').update({ snoozed_until: snoozeUntil }).eq('id', reminderId);
-      if (!error) { toast({ title: `Reminder snoozed for ${snoozeMinutes} minutes` }); fetchReminders(); }
-    } else {
-      await queueMutation('supabase', { op: 'update', table: 'reminders', data: { snoozed_until: snoozeUntil }, match: { id: reminderId } });
-      toast({ title: `Reminder snoozed for ${snoozeMinutes} minutes (offline)` });
-      fetchReminders();
-    }
+    toast({ title: `Reminder snoozed for ${snoozeMinutes} minutes` });
+    setUpcomingReminders(prev => prev.filter(r => r.id !== reminderId));
   };
 
   const dismissReminder = async (reminderId: string) => {
-    if (navigator.onLine) {
-      const { error } = await supabase.from('reminders').update({ is_dismissed: true }).eq('id', reminderId);
-      if (!error) { fetchReminders(); }
-    } else {
-      await queueMutation('supabase', { op: 'update', table: 'reminders', data: { is_dismissed: true }, match: { id: reminderId } });
-      fetchReminders();
-    }
+    setUpcomingReminders(prev => prev.filter(r => r.id !== reminderId));
   };
 
   const fetchReminders = async () => {
     if (!user) return;
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('reminders')
-      .select('r:*, t:todos(id, title)')
-      .eq('user_id', user.id)
-      .eq('is_dismissed', false)
-      .lte('scheduled_at', now)
-      .or(`snoozed_until.is.null, snoozed_until.lte.${now}`);
+    try {
+      const now = new Date();
+      const dueReminders = todos
+        .filter(t => !t.is_completed && !t.is_deleted && t.due_date)
+        .filter(t => {
+          try {
+            const d = new Date(t.due_date!);
+            return !isNaN(d.getTime()) && d.getTime() <= now.getTime();
+          } catch {
+            return false;
+          }
+        })
+        .map(t => ({
+          id: t.id,
+          title: t.title,
+          scheduled_at: t.due_date!,
+        }));
 
-    if (!error && data) {
-      const reminders = data.map((r: any) => ({
-        id: r.id,
-        title: r.t?.title || 'Task',
-        scheduled_at: r.scheduled_at,
-      }));
-      setUpcomingReminders(reminders);
+      setUpcomingReminders(dueReminders);
+    } catch {
+      // Ignore background error
     }
   };
 
-  // Fetch reminders on load
+  // Fetch reminders on load and when todos change
   useEffect(() => {
     if (user) fetchReminders();
-    const interval = setInterval(() => {
-      if (user) fetchReminders();
-    }, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [user]);
+  }, [user, todos]);
 
   const openEditDialog = (todo: Todo) => {
     setEditingTodo(todo);
@@ -1260,16 +1302,27 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         </div>
 
 
-        {/* Search */}
+        {/* Search & Add Button Header */}
         <Card className="p-3 sm:p-4 mb-3 sm:mb-4 shadow-card border-border/50 rounded-2xl animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 hover:shadow-elevated transition-all duration-300">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tasks..."
-              className="pl-10 rounded-xl h-10 text-sm"
-            />
+          <div className="flex items-center gap-2 w-full">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search tasks..."
+                className="pl-10 rounded-xl h-10 text-sm"
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => setDialogOpen(true)}
+              className="h-10 rounded-xl font-bold text-xs px-3.5 bg-primary hover:bg-primary/90 text-primary-foreground shadow-md shrink-0 gap-1.5 active:scale-95 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Task</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
           </div>
         </Card>
 
@@ -1299,15 +1352,21 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
             {filteredTodos.map((todo, index) => (
               <Card 
                 key={todo.id}
-                className={`p-3 sm:p-4 shadow-card border-border/50 rounded-2xl transition-all duration-300 hover:shadow-elevated hover:scale-[1.01] hover:border-primary/30 animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 ${
-                  todo.is_completed ? 'opacity-60' : ''
-                }`}
+                onClick={() => setViewingTodo(todo)}
+                className={cn(
+                  "p-3 sm:p-4 shadow-card border-border/50 rounded-2xl transition-all duration-300 hover:shadow-elevated hover:scale-[1.01] hover:border-primary/30 animate-fade-in backdrop-blur-sm bg-white/40 dark:bg-slate-950/40 cursor-pointer",
+                  todo.is_completed && "opacity-60",
+                  todo.is_pinned && "border-amber-500/50 bg-amber-500/5 dark:bg-amber-950/20 shadow-md"
+                )}
                 style={{ animationDelay: `${index * 50}ms` }}
               >
                 <div className="flex items-start gap-2 sm:gap-3">
                   <button
-                    onClick={() => toggleComplete(todo)}
-                    className="mt-1 transition-transform hover:scale-110"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleComplete(todo);
+                    }}
+                    className="mt-1 transition-transform hover:scale-110 shrink-0"
                   >
                     {todo.is_completed ? (
                       <CheckCircle2 className="w-5 h-5 text-success" />
@@ -1321,14 +1380,34 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                       <h3 className={`font-semibold ${todo.is_completed ? 'line-through text-muted-foreground' : ''}`}>
                         {todo.title}
                       </h3>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                         {!todo.is_deleted && (
                           <>
                             <Button
                               variant="ghost"
                               size="icon"
+                              className={cn(
+                                "h-8 w-8 rounded-lg flex-shrink-0 transition-all",
+                                todo.is_pinned 
+                                  ? "bg-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500/30" 
+                                  : "hover:bg-primary/10 hover:text-primary text-muted-foreground"
+                              )}
+                              title={todo.is_pinned ? "Unpin task" : "Pin task to top"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                togglePin(todo);
+                              }}
+                            >
+                              <Pin className={cn("w-4 h-4", todo.is_pinned && "fill-amber-500 text-amber-500 rotate-45")} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               className="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary flex-shrink-0"
-                              onClick={() => openEditDialog(todo)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditDialog(todo);
+                              }}
                             >
                               <Edit2 className="w-4 h-4" />
                             </Button>
@@ -1336,7 +1415,10 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
-                              onClick={() => deleteTodo(todo.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteTodo(todo.id);
+                              }}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -1347,7 +1429,10 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                             variant="ghost"
                             size="sm"
                             className="h-8 px-2 text-xs rounded-lg hover:bg-success/10 hover:text-success flex-shrink-0"
-                            onClick={() => restoreTodo(todo.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              restoreTodo(todo.id);
+                            }}
                           >
                             Restore
                           </Button>
@@ -1360,13 +1445,15 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
                         {todo.description}
                       </p>
                     )}
-
-                    {/* AI Summary */}
-                    <p className="text-xs text-muted-foreground mt-2 italic">
-                      {generateTaskSummary(todo)}
-                    </p>
                     
                     <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-2">
+                      {todo.is_pinned && (
+                        <Badge variant="outline" className="text-xs bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 font-semibold flex items-center gap-1">
+                          <Pin className="w-3 h-3 fill-amber-500 text-amber-500 rotate-45" />
+                          Pinned
+                        </Badge>
+                      )}
+
                       <Badge variant="outline" className={`text-xs ${PRIORITY_COLORS[todo.priority as 'low' | 'medium' | 'high'] || 'bg-muted text-muted-foreground'}`}>
                         <Flag className="w-3 h-3 mr-1" />
                         {todo.priority}
@@ -1843,15 +1930,147 @@ const TodoApp = ({ embedMode = false }: TodoAppProps = {}) => {
         </DialogContent>
       </Dialog>
 
-      {/* Floating Action Button (FAB) */}
-      <Button
-        onClick={() => setDialogOpen(true)}
-        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-2xl bg-primary text-primary-foreground hover:scale-110 active:scale-95 transition-all duration-300 flex items-center justify-center border-2 border-white/30"
-        size="icon"
-        title="Add Task"
-      >
-        <Plus className="w-7 h-7 text-white" />
-      </Button>
+      {/* Full-Detail Task Details View Modal */}
+      <Dialog open={!!viewingTodo} onOpenChange={(open) => !open && setViewingTodo(null)}>
+        <DialogContent className="max-w-lg w-[calc(100vw-2rem)] rounded-3xl border-border/50 shadow-elevated max-h-[90vh] overflow-y-auto p-5 sm:p-6">
+          {viewingTodo && (
+            <div className="space-y-4">
+              {/* Header Badges & Title */}
+              <div className="space-y-2 pb-2 border-b border-border/40">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="outline" className={`text-xs px-2.5 py-0.5 font-bold ${PRIORITY_COLORS[viewingTodo.priority as 'low' | 'medium' | 'high'] || 'bg-muted text-muted-foreground'}`}>
+                      <Flag className="w-3 h-3 mr-1" />
+                      {viewingTodo.priority.toUpperCase()} Priority
+                    </Badge>
+                    
+                    {viewingTodo.category && (
+                      <Badge variant="secondary" className="text-xs px-2.5 py-0.5 font-semibold">
+                        <Tag className="w-3 h-3 mr-1" />
+                        {viewingTodo.category}
+                      </Badge>
+                    )}
+
+                    {viewingTodo.is_completed ? (
+                      <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-xs px-2.5 py-0.5 font-bold">
+                        ✓ Completed
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs px-2.5 py-0.5 font-bold text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10">
+                        ⏳ Pending
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                <h2 className={cn("text-xl sm:text-2xl font-extrabold tracking-tight text-foreground mt-2", viewingTodo.is_completed && "line-through text-muted-foreground")}>
+                  {viewingTodo.title}
+                </h2>
+              </div>
+
+              {/* Full Description Section */}
+              {viewingTodo.description ? (
+                <div className="space-y-1.5 bg-muted/30 p-3.5 rounded-2xl border border-border/40">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Description & Notes</Label>
+                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed font-normal">
+                    {viewingTodo.description}
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-muted/20 p-3 rounded-2xl border border-dashed border-border/40 text-xs text-muted-foreground italic">
+                  No additional description provided.
+                </div>
+              )}
+
+              {/* Task Metadata Grid */}
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 text-xs">
+                {/* Due Date */}
+                <div className="p-3 bg-muted/30 rounded-2xl border border-border/40 space-y-1">
+                  <span className="text-muted-foreground font-semibold flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-primary" /> Due Date
+                  </span>
+                  <p className="font-bold text-foreground">
+                    {safeFormatDueDate(viewingTodo.due_date) ? (
+                      <>
+                        {safeFormatDueDate(viewingTodo.due_date)}
+                        {daysUntilDue(viewingTodo.due_date) !== null && (
+                          <span className="block text-[11px] text-muted-foreground font-normal">
+                            ({daysUntilDue(viewingTodo.due_date)! < 0 ? 'Overdue' : `${daysUntilDue(viewingTodo.due_date)} days left`})
+                          </span>
+                        )}
+                      </>
+                    ) : 'No due date'}
+                  </p>
+                </div>
+
+                {/* Created Date */}
+                <div className="p-3 bg-muted/30 rounded-2xl border border-border/40 space-y-1">
+                  <span className="text-muted-foreground font-semibold flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-primary" /> Created On
+                  </span>
+                  <p className="font-bold text-foreground">
+                    {viewingTodo.created_at ? format(new Date(viewingTodo.created_at), 'MMM d, yyyy') : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Footer Buttons */}
+              <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/40">
+                <Button
+                  onClick={() => {
+                    toggleComplete(viewingTodo);
+                    setViewingTodo(prev => prev ? { ...prev, is_completed: !prev.is_completed } : null);
+                  }}
+                  variant={viewingTodo.is_completed ? "outline" : "default"}
+                  className="flex-1 rounded-xl text-xs font-bold h-10 gap-1.5"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {viewingTodo.is_completed ? 'Mark Pending' : 'Mark Complete'}
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    togglePin(viewingTodo);
+                    setViewingTodo(prev => prev ? { ...prev, is_pinned: !prev.is_pinned } : null);
+                  }}
+                  variant="outline"
+                  className={cn(
+                    "rounded-xl text-xs font-bold h-10 px-3 gap-1.5 transition-colors",
+                    viewingTodo.is_pinned && "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/40"
+                  )}
+                  title={viewingTodo.is_pinned ? "Unpin task" : "Pin task to top"}
+                >
+                  <Pin className={cn("w-4 h-4", viewingTodo.is_pinned && "fill-amber-500 text-amber-500 rotate-45")} />
+                  {viewingTodo.is_pinned ? 'Unpin' : 'Pin'}
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    const current = viewingTodo;
+                    setViewingTodo(null);
+                    openEditDialog(current);
+                  }}
+                  variant="secondary"
+                  className="rounded-xl text-xs font-bold h-10 px-4 gap-1.5"
+                >
+                  <Edit2 className="w-4 h-4" /> Edit
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    deleteTodo(viewingTodo.id);
+                    setViewingTodo(null);
+                  }}
+                  variant="destructive"
+                  className="rounded-xl text-xs font-bold h-10 px-3 gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

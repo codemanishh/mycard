@@ -58,12 +58,12 @@ export const getAssignmentProfile = async (
     }
   } catch (e) {}
 
-  // 2. Fetch from Supabase profiles / public_profiles_view
+  // 2. Fetch from Supabase profiles
   try {
     const { data: profile } = await supabase
-      .from('public_profiles_view')
+      .from('profiles')
       .select('full_name, assignment_code, allowed_assigners')
-      .or(`user_id.eq.${userId},email.ilike.${userEmail}`)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (profile) {
@@ -123,9 +123,9 @@ export const getAssignmentProfile = async (
         if (!existingKey) {
           try {
             const { data: assignerProfile } = await supabase
-              .from('public_profiles_view')
+              .from('profiles')
               .select('user_id, email, full_name')
-              .or(isEmail ? `email.ilike.${cleanKey}` : `user_id.eq.${idOrEmail}`)
+              .eq(isEmail ? 'email' : 'user_id', cleanKey)
               .maybeSingle();
 
             if (assignerProfile && assignerProfile.email) {

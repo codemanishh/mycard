@@ -31,12 +31,12 @@ export interface Lending {
 }
 
 export const EXPENSE_CATEGORIES = [
-  { value: 'petrol', label: 'Petrol / Fuel', emoji: '⛽' },
   { value: 'food', label: 'Food', emoji: '🍔' },
   { value: 'shopping', label: 'Shopping', emoji: '🛒' },
   { value: 'bills', label: 'Bills', emoji: '📄' },
   { value: 'transport', label: 'Transport', emoji: '🚗' },
   { value: 'entertainment', label: 'Entertainment', emoji: '🎬' },
+  { value: 'petrol', label: 'Petrol / Fuel', emoji: '⛽' },
   { value: 'other', label: 'Other', emoji: '📦' },
 ] as const;
 
