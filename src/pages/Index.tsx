@@ -45,45 +45,6 @@ const CACHE_KEYS = {
   SAVINGS: 'mycard_cached_savings',
 };
 
-const DEFAULT_SAVINGS: SavingsItem[] = [
-  {
-    id: 'sav-1',
-    name: 'Emergency Cash',
-    type: 'cash',
-    realValue: 15000,
-    currentValue: 15000,
-    notes: 'Home Safe Locker Cash',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'sav-2',
-    name: 'Parag Parikh Flexi Cap',
-    type: 'sip',
-    realValue: 50000,
-    currentValue: 62500,
-    notes: 'Monthly SIP on 10th',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'sav-3',
-    name: 'Nifty 50 Index Fund',
-    type: 'sip',
-    realValue: 30000,
-    currentValue: 34200,
-    notes: 'Long-term wealth',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'sav-4',
-    name: 'Tata Motors Shares',
-    type: 'stock',
-    realValue: 25000,
-    currentValue: 29800,
-    notes: 'Equity holding',
-    createdAt: new Date().toISOString(),
-  },
-];
-
 function getCachedData<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
@@ -103,6 +64,12 @@ function setCachedData(key: string, value: any) {
   }
 }
 
+function getInitialSavings(): SavingsItem[] {
+  const cached = getCachedData<SavingsItem[]>(CACHE_KEYS.SAVINGS, []);
+  // Filter out any leftover dummy items from previous initializations
+  return cached.filter(s => !['sav-1', 'sav-2', 'sav-3', 'sav-4'].includes(s.id));
+}
+
 const Index = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
@@ -113,7 +80,7 @@ const Index = () => {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => getCachedData(CACHE_KEYS.BANKS, []));
   const [expenses, setExpenses] = useState<Expense[]>(() => getCachedData(CACHE_KEYS.EXPENSES, []));
   const [lendings, setLendings] = useState<Lending[]>(() => getCachedData(CACHE_KEYS.LENDINGS, []));
-  const [savings, setSavings] = useState<SavingsItem[]>(() => getCachedData(CACHE_KEYS.SAVINGS, DEFAULT_SAVINGS));
+  const [savings, setSavings] = useState<SavingsItem[]>(() => getInitialSavings());
 
   // Dark Mode Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -385,6 +352,28 @@ const Index = () => {
             note: l.note || undefined,
             createdAt: l.created_at,
           })));
+        }
+
+        // 5. Fetch savings from Supabase
+        try {
+          const { data: savingsData } = await supabase
+            .from('savings' as any)
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          if (savingsData && savingsData.length > 0) {
+            setSavings(savingsData.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              type: s.type as any,
+              realValue: Number(s.real_value) || 0,
+              currentValue: Number(s.current_value) || 0,
+              notes: s.notes || undefined,
+              createdAt: s.created_at,
+            })));
+          }
+        } catch (savingsErr) {
+          console.warn('Savings table fetch skipped:', savingsErr);
         }
       } catch (err) {
         console.warn('Network sync failed, keeping local cached data:', err);
@@ -1111,7 +1100,7 @@ const Index = () => {
     }
   };
 
-  const handleSaveSavings = (itemData: Omit<SavingsItem, 'id' | 'createdAt'> & { id?: string }) => {
+  const handleSaveSavings = async (itemData: Omit<SavingsItem, 'id' | 'createdAt'> & { id?: string }) => {
     if (itemData.id) {
       const updated = savings.map(s => 
         s.id === itemData.id ? { ...s, ...itemData, id: itemData.id!, updatedAt: new Date().toISOString() } : s
@@ -1121,9 +1110,28 @@ const Index = () => {
         title: 'Savings Updated',
         description: `Updated ${itemData.name}`,
       });
+
+      if (user) {
+        try {
+          await supabase
+            .from('savings' as any)
+            .update({
+              name: itemData.name,
+              type: itemData.type,
+              real_value: itemData.realValue,
+              current_value: itemData.currentValue,
+              notes: itemData.notes,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', itemData.id);
+        } catch (err) {
+          console.warn('Supabase update failed, kept local:', err);
+        }
+      }
     } else {
+      const tempId = `sav-${Date.now()}`;
       const newItem: SavingsItem = {
-        id: `sav-${Date.now()}`,
+        id: tempId,
         name: itemData.name,
         type: itemData.type,
         realValue: itemData.realValue,
@@ -1136,15 +1144,49 @@ const Index = () => {
         title: 'Savings Added',
         description: `Added ${itemData.name}`,
       });
+
+      if (user) {
+        try {
+          const { data } = await supabase
+            .from('savings' as any)
+            .insert({
+              user_id: user.id,
+              name: itemData.name,
+              type: itemData.type,
+              real_value: itemData.realValue,
+              current_value: itemData.currentValue,
+              notes: itemData.notes,
+            })
+            .select()
+            .single();
+
+          if (data) {
+            setSavings(prev => prev.map(s => s.id === tempId ? { ...s, id: data.id } : s));
+          }
+        } catch (err) {
+          console.warn('Supabase insert failed, kept local:', err);
+        }
+      }
     }
   };
 
-  const handleDeleteSavings = (id: string) => {
+  const handleDeleteSavings = async (id: string) => {
     setSavings(savings.filter(s => s.id !== id));
     toast({
       title: 'Savings Deleted',
       description: 'Savings record removed.',
     });
+
+    if (user) {
+      try {
+        await supabase
+          .from('savings' as any)
+          .delete()
+          .eq('id', id);
+      } catch (err) {
+        console.warn('Supabase delete failed, kept local:', err);
+      }
+    }
   };
 
   const handleLogout = async () => {
