@@ -1,7 +1,9 @@
 import { BankAccount } from '@/types/expense';
-import { Wallet, TrendingUp } from 'lucide-react';
+import { Wallet, TrendingUp, Layers, Check } from 'lucide-react';
 import { BankLogo } from './BankLogo';
 import { FuelSpendCarouselCard, FuelSpendStats } from './FuelSpendCarouselCard';
+import { SavingsCarouselCard } from './SavingsCarouselCard';
+import { SavingsItem } from '@/types/savings';
 
 interface BankBalanceCardProps {
   accounts: BankAccount[];
@@ -9,6 +11,11 @@ interface BankBalanceCardProps {
   onBankClick?: (bank: BankAccount) => void;
   petrolStats?: FuelSpendStats;
   onAddFuelSpend?: () => void;
+  savings?: SavingsItem[];
+  onAddSavings?: () => void;
+  onManageSavings?: () => void;
+  isSingleBankMode?: boolean;
+  onToggleSingleBankMode?: () => void;
 }
 
 export const BankBalanceCard = ({ 
@@ -17,10 +24,20 @@ export const BankBalanceCard = ({
   onBankClick,
   petrolStats,
   onAddFuelSpend,
+  savings = [],
+  onAddSavings = () => {},
+  onManageSavings = () => {},
+  isSingleBankMode = false,
+  onToggleSingleBankMode,
 }: BankBalanceCardProps) => {
   const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
   const actualBalance = totalBalance - totalBills;
   
+  // Find bank with highest balance before merge
+  const highestBalanceBank = accounts.length > 0
+    ? accounts.reduce((prev, curr) => (curr.balance > prev.balance ? curr : prev), accounts[0])
+    : null;
+
   return (
     <div className="space-y-2 md:space-y-3">
       {/* Total Balance & Actual Balance */}
@@ -37,7 +54,7 @@ export const BankBalanceCard = ({
             </p>
           </div>
 
-          {/* Right Side: Actual Balance (Slightly Smaller Font Size) */}
+          {/* Right Side: Actual Balance */}
           <div className="text-right border-l border-white/20 pl-3 md:pl-4">
             <div className="flex items-center justify-end gap-1 mb-0.5 md:mb-1">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-300" />
@@ -52,31 +69,67 @@ export const BankBalanceCard = ({
         </div>
       </div>
       
-      {/* Individual Banks & Fuel Spend Tile */}
-      {(accounts.length > 0 || petrolStats) && (
+      {/* Individual Banks OR Single Merged Bank Tile & Fuel & Savings */}
+      {(accounts.length > 0 || petrolStats || savings.length >= 0) && (
         <div className="grid grid-cols-2 gap-2 md:gap-3">
-          {accounts.map((account) => (
+          {isSingleBankMode && highestBalanceBank ? (
+            /* SINGLE MERGED BANK TILE (Shows logo & name of highest balance bank, but total merged amount!) */
             <button 
-              key={account.id} 
-              onClick={() => onBankClick?.(account)}
-              className="bg-white/10 backdrop-blur-md rounded-lg md:rounded-xl p-2 md:p-3 border border-white/10 flex items-center gap-2 md:gap-3 hover:bg-white/20 transition-colors text-left active:scale-95"
+              key="single-merged-bank"
+              onClick={() => onBankClick?.(highestBalanceBank)}
+              className="bg-white/10 backdrop-blur-md rounded-lg md:rounded-xl p-2 md:p-3 border border-emerald-400/40 flex items-center gap-2 md:gap-3 hover:bg-white/20 transition-all text-left active:scale-95 group relative overflow-hidden shadow-sm"
+              title={`Single Bank Mode: Deducts from ${highestBalanceBank.bankName} (Highest Balance: ₹${highestBalanceBank.balance.toLocaleString('en-IN')})`}
             >
-              <BankLogo bankName={account.bankName} size="sm" />
+              <BankLogo bankName={highestBalanceBank.bankName} size="sm" />
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] md:text-xs text-white/60 truncate">{account.bankName}</p>
-                <p className="text-xs md:text-sm font-semibold">
-                  ₹{account.balance.toLocaleString('en-IN')}
+                <div className="flex items-center justify-between gap-1">
+                  <p className="text-[10px] md:text-xs font-bold text-white truncate">
+                    {highestBalanceBank.bankName}
+                  </p>
+                  <span className="text-[8px] font-mono font-bold px-1 rounded bg-emerald-500/40 text-emerald-200 border border-emerald-400/40 shrink-0">
+                    Single
+                  </span>
+                </div>
+                <p className="text-xs md:text-sm font-extrabold text-white font-mono leading-tight mt-0.5">
+                  ₹{totalBalance.toLocaleString('en-IN')}
+                </p>
+                <p className="text-[8px] text-white/60 truncate mt-0.5">
+                  Cut from: {highestBalanceBank.bankName}
                 </p>
               </div>
             </button>
-          ))}
+          ) : (
+            /* SEPARATE BANK TILES */
+            accounts.map((account) => (
+              <button 
+                key={account.id} 
+                onClick={() => onBankClick?.(account)}
+                className="bg-white/10 backdrop-blur-md rounded-lg md:rounded-xl p-2 md:p-3 border border-white/10 flex items-center gap-2 md:gap-3 hover:bg-white/20 transition-colors text-left active:scale-95"
+              >
+                <BankLogo bankName={account.bankName} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] md:text-xs text-white/60 truncate">{account.bankName}</p>
+                  <p className="text-xs md:text-sm font-semibold">
+                    ₹{account.balance.toLocaleString('en-IN')}
+                  </p>
+                </div>
+              </button>
+            ))
+          )}
 
-          {/* Swipeable Fuel Spend Carousel Tile (Exact size of a bank card item) */}
+          {/* Swipeable Fuel Spend Carousel Tile */}
           {petrolStats && (
             <FuelSpendCarouselCard stats={petrolStats} onAddFuelSpend={onAddFuelSpend} />
           )}
+
+          {/* Swipeable Savings Carousel Tile */}
+          <SavingsCarouselCard 
+            savings={savings} 
+            onAddSavings={onAddSavings} 
+            onManageSavings={onManageSavings} 
+          />
         </div>
       )}
     </div>
   );
-};
+};

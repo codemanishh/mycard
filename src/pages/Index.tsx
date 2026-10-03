@@ -17,9 +17,11 @@ import { EditBankDialog } from '@/components/EditBankDialog';
 import { AddBankDialog } from '@/components/AddBankDialog';
 import { ProfileDialog } from '@/components/ProfileDialog';
 import { VoicePaymentDialog } from '@/components/VoicePaymentDialog';
+import { SavingsDialog } from '@/components/SavingsDialog';
+import { SavingsItem } from '@/types/savings';
 import TodoApp from '@/pages/TodoApp';
 import { Button } from '@/components/ui/button';
-import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic, CircleDot, PieChart, Fuel } from 'lucide-react';
+import { Plus, CreditCard, Bell, TrendingUp, Grid3x3, ArrowLeft, Receipt, Users, Pencil, LogOut, History, Building2, User, ListTodo, MessageCircle, Calendar, Mic, CircleDot, PieChart, Fuel, PiggyBank, Sun, Moon, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -40,7 +42,47 @@ const CACHE_KEYS = {
   BANKS: 'mycard_cached_banks',
   EXPENSES: 'mycard_cached_expenses',
   LENDINGS: 'mycard_cached_lendings',
+  SAVINGS: 'mycard_cached_savings',
 };
+
+const DEFAULT_SAVINGS: SavingsItem[] = [
+  {
+    id: 'sav-1',
+    name: 'Emergency Cash',
+    type: 'cash',
+    realValue: 15000,
+    currentValue: 15000,
+    notes: 'Home Safe Locker Cash',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'sav-2',
+    name: 'Parag Parikh Flexi Cap',
+    type: 'sip',
+    realValue: 50000,
+    currentValue: 62500,
+    notes: 'Monthly SIP on 10th',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'sav-3',
+    name: 'Nifty 50 Index Fund',
+    type: 'sip',
+    realValue: 30000,
+    currentValue: 34200,
+    notes: 'Long-term wealth',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'sav-4',
+    name: 'Tata Motors Shares',
+    type: 'stock',
+    realValue: 25000,
+    currentValue: 29800,
+    notes: 'Equity holding',
+    createdAt: new Date().toISOString(),
+  },
+];
 
 function getCachedData<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -71,12 +113,45 @@ const Index = () => {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => getCachedData(CACHE_KEYS.BANKS, []));
   const [expenses, setExpenses] = useState<Expense[]>(() => getCachedData(CACHE_KEYS.EXPENSES, []));
   const [lendings, setLendings] = useState<Lending[]>(() => getCachedData(CACHE_KEYS.LENDINGS, []));
+  const [savings, setSavings] = useState<SavingsItem[]>(() => getCachedData(CACHE_KEYS.SAVINGS, DEFAULT_SAVINGS));
+
+  // Dark Mode Theme State
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = localStorage.getItem('mycard_theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('mycard_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('mycard_theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  // Single Merged Bank Mode State
+  const [isSingleBankMode, setIsSingleBankMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('mycard_single_bank_mode') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('mycard_single_bank_mode', String(isSingleBankMode));
+  }, [isSingleBankMode]);
 
   // Automatically update local cache whenever state changes
   useEffect(() => { setCachedData(CACHE_KEYS.CARDS, cards); }, [cards]);
   useEffect(() => { setCachedData(CACHE_KEYS.BANKS, bankAccounts); }, [bankAccounts]);
   useEffect(() => { setCachedData(CACHE_KEYS.EXPENSES, expenses); }, [expenses]);
   useEffect(() => { setCachedData(CACHE_KEYS.LENDINGS, lendings); }, [lendings]);
+  useEffect(() => { setCachedData(CACHE_KEYS.SAVINGS, savings); }, [savings]);
+  
+  const [savingsDialogOpen, setSavingsDialogOpen] = useState(false);
+  const [savingsDialogMode, setSavingsDialogMode] = useState<'add' | 'list'>('list');
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
@@ -1036,6 +1111,42 @@ const Index = () => {
     }
   };
 
+  const handleSaveSavings = (itemData: Omit<SavingsItem, 'id' | 'createdAt'> & { id?: string }) => {
+    if (itemData.id) {
+      const updated = savings.map(s => 
+        s.id === itemData.id ? { ...s, ...itemData, id: itemData.id!, updatedAt: new Date().toISOString() } : s
+      );
+      setSavings(updated);
+      toast({
+        title: 'Savings Updated',
+        description: `Updated ${itemData.name}`,
+      });
+    } else {
+      const newItem: SavingsItem = {
+        id: `sav-${Date.now()}`,
+        name: itemData.name,
+        type: itemData.type,
+        realValue: itemData.realValue,
+        currentValue: itemData.currentValue,
+        notes: itemData.notes,
+        createdAt: new Date().toISOString(),
+      };
+      setSavings([newItem, ...savings]);
+      toast({
+        title: 'Savings Added',
+        description: `Added ${itemData.name}`,
+      });
+    }
+  };
+
+  const handleDeleteSavings = (id: string) => {
+    setSavings(savings.filter(s => s.id !== id));
+    toast({
+      title: 'Savings Deleted',
+      description: 'Savings record removed.',
+    });
+  };
+
   const handleLogout = async () => {
     await signOut();
     toast({
@@ -1107,6 +1218,14 @@ const Index = () => {
             </div>
             <div className="flex gap-1 md:gap-2 shrink-0">
               <Button 
+                onClick={() => setIsDarkMode(prev => !prev)}
+                size="icon"
+                className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm rounded-lg md:rounded-xl h-8 w-8 md:h-10 md:w-10 transition-all active:scale-95"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              >
+                {isDarkMode ? <Sun className="w-4 h-4 md:w-5 md:h-5 text-amber-300" /> : <Moon className="w-4 h-4 md:w-5 md:h-5 text-slate-100" />}
+              </Button>
+              <Button 
                 onClick={() => setVoiceDialogOpen(true)}
                 size="icon"
                 className="bg-amber-500 hover:bg-amber-600 text-white border-0 shadow-md backdrop-blur-sm rounded-lg md:rounded-xl h-8 w-8 md:h-10 md:w-10 transition-all active:scale-95"
@@ -1157,15 +1276,26 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Bank Balances & Fuel Spend Carousel */}
+          {/* Bank Balances, Fuel & Savings Carousel */}
           <BankBalanceCard 
             accounts={bankAccounts} 
             totalBills={totalBill} 
             onBankClick={handleQuickExpenseFromBank}
             petrolStats={petrolSpendStats}
             onAddFuelSpend={handleAddPetrolSpend}
+            savings={savings}
+            onAddSavings={() => {
+              setSavingsDialogMode('add');
+              setSavingsDialogOpen(true);
+            }}
+            onManageSavings={() => {
+              setSavingsDialogMode('list');
+              setSavingsDialogOpen(true);
+            }}
+            isSingleBankMode={isSingleBankMode}
+            onToggleSingleBankMode={() => setIsSingleBankMode(prev => !prev)}
           />
-          <div className="flex gap-2 mt-2 md:mt-3">
+          <div className="flex gap-1.5 md:gap-2 mt-2 md:mt-3 flex-wrap sm:flex-nowrap">
             <Button 
               onClick={() => setBankAddDialogOpen(true)}
               size="sm"
@@ -1183,6 +1313,19 @@ const Index = () => {
             >
               <Pencil className="w-3 h-3 mr-1.5 md:mr-2" />
               Edit Balance
+            </Button>
+            <Button 
+              onClick={() => setIsSingleBankMode(prev => !prev)}
+              size="sm"
+              variant="ghost"
+              className={cn(
+                "flex-1 rounded-lg md:rounded-xl transition-all text-xs md:text-sm h-8 md:h-9 font-semibold",
+                isSingleBankMode ? "text-emerald-300 bg-white/15 border border-emerald-400/30" : "text-white/60 hover:text-white hover:bg-white/10"
+              )}
+              title="Toggle Single Bank Mode (Merges all bank amounts into one single tile)"
+            >
+              <Layers className="w-3 h-3 mr-1.5 md:mr-2" />
+              Single Bank: {isSingleBankMode ? 'ON' : 'OFF'}
             </Button>
           </div>
 
@@ -1535,6 +1678,15 @@ const Index = () => {
         cards={cards}
         bankAccounts={bankAccounts}
         onConfirmVoiceExpense={handleConfirmVoiceExpense}
+      />
+
+      <SavingsDialog
+        open={savingsDialogOpen}
+        onOpenChange={setSavingsDialogOpen}
+        savings={savings}
+        onSaveSavings={handleSaveSavings}
+        onDeleteSavings={handleDeleteSavings}
+        initialMode={savingsDialogMode}
       />
     </div>
   );

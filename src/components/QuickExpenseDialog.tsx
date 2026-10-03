@@ -78,7 +78,7 @@ export const QuickExpenseDialog = ({
         {/* Selected Payment Source Banner */}
         <div className="flex items-center justify-between gap-3 p-3 bg-muted/40 rounded-2xl border border-border/50">
           <div className="flex items-center gap-3">
-            <BankLogo bankName={paymentSource.name.split(' ')[0]} size="md" />
+            <BankLogo bankName={paymentSource.name} size="md" />
             <div>
               <p className="font-semibold text-sm text-foreground">{paymentSource.name}</p>
               <p className="text-xs text-muted-foreground font-medium capitalize">

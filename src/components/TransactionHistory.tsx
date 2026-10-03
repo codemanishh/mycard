@@ -526,7 +526,7 @@ export const TransactionHistory = ({
                   >
                     <div className="flex items-center justify-between gap-3 mb-2">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <BankLogo bankName={item.name.split(' ')[0]} size="sm" />
+                        <BankLogo bankName={item.name} size="sm" />
                         <div className="min-w-0">
                           <p className="font-bold text-sm text-foreground truncate group-hover:text-primary transition-colors">
                             {item.name}
@@ -579,7 +579,7 @@ export const TransactionHistory = ({
               </Button>
 
               <div className="flex items-center gap-2">
-                <BankLogo bankName={singleCardYearlySpend.cardName.split(' ')[0]} size="sm" />
+                <BankLogo bankName={singleCardYearlySpend.cardName} size="sm" />
                 <div>
                   <h3 className="font-bold text-sm text-foreground leading-tight truncate">
                     {singleCardYearlySpend.cardName}

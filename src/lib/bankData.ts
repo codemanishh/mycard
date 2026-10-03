@@ -92,13 +92,30 @@ export const INDIAN_BANKS: BankInfo[] = [
   { name: 'CRED', slug: '', category: 'other', color: '#1A1A1A' },
 ];
 
-// Get bank info by name (partial match)
+// Get bank info by name (exact or partial match)
 export const getBankByName = (name: string): BankInfo | undefined => {
+  if (!name) return undefined;
   const normalizedName = name.toLowerCase().trim();
+
+  // 1. Exact match by full bank name
+  const exactMatch = INDIAN_BANKS.find(bank => bank.name.toLowerCase() === normalizedName);
+  if (exactMatch) return exactMatch;
+
+  // 2. Space-stripped exact match (e.g. "indianoverseasbank")
+  const strippedInput = normalizedName.replace(/\s+/g, '');
+  const spaceMatch = INDIAN_BANKS.find(bank => bank.name.toLowerCase().replace(/\s+/g, '') === strippedInput);
+  if (spaceMatch) return spaceMatch;
+
+  // 3. Starts-with match
+  const startsWithMatch = INDIAN_BANKS.find(bank => 
+    bank.name.toLowerCase().startsWith(normalizedName) || normalizedName.startsWith(bank.name.toLowerCase())
+  );
+  if (startsWithMatch) return startsWithMatch;
+
+  // 4. Loose inclusion match
   return INDIAN_BANKS.find(bank => 
     bank.name.toLowerCase().includes(normalizedName) || 
-    normalizedName.includes(bank.name.toLowerCase()) ||
-    bank.name.toLowerCase().replace(/\s+/g, '') === normalizedName.replace(/\s+/g, '')
+    normalizedName.includes(bank.name.toLowerCase())
   );
 };
 
