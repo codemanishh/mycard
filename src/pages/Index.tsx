@@ -1337,37 +1337,37 @@ const Index = () => {
             isSingleBankMode={isSingleBankMode}
             onToggleSingleBankMode={() => setIsSingleBankMode(prev => !prev)}
           />
-          <div className="flex gap-1.5 md:gap-2 mt-2 md:mt-3 flex-wrap sm:flex-nowrap">
+          <div className="grid grid-cols-3 gap-1 md:gap-2 mt-2 md:mt-3 w-full">
             <Button 
               onClick={() => setBankAddDialogOpen(true)}
               size="sm"
               variant="ghost"
-              className="flex-1 text-white/60 hover:text-white hover:bg-white/10 rounded-lg md:rounded-xl transition-all text-xs md:text-sm h-8 md:h-9"
+              className="text-white/60 hover:text-white hover:bg-white/10 rounded-lg md:rounded-xl transition-all text-[11px] sm:text-xs md:text-sm h-8 md:h-9 px-1 sm:px-2 truncate"
             >
-              <Building2 className="w-3 h-3 mr-1.5 md:mr-2" />
-              Manage Banks
+              <Building2 className="w-3 h-3 mr-1 md:mr-1.5 shrink-0" />
+              <span className="truncate">Manage Banks</span>
             </Button>
             <Button 
               onClick={() => setBankEditDialogOpen(true)}
               size="sm"
               variant="ghost"
-              className="flex-1 text-white/60 hover:text-white hover:bg-white/10 rounded-lg md:rounded-xl transition-all text-xs md:text-sm h-8 md:h-9"
+              className="text-white/60 hover:text-white hover:bg-white/10 rounded-lg md:rounded-xl transition-all text-[11px] sm:text-xs md:text-sm h-8 md:h-9 px-1 sm:px-2 truncate"
             >
-              <Pencil className="w-3 h-3 mr-1.5 md:mr-2" />
-              Edit Balance
+              <Pencil className="w-3 h-3 mr-1 md:mr-1.5 shrink-0" />
+              <span className="truncate">Edit Balance</span>
             </Button>
             <Button 
               onClick={() => setIsSingleBankMode(prev => !prev)}
               size="sm"
               variant="ghost"
               className={cn(
-                "flex-1 rounded-lg md:rounded-xl transition-all text-xs md:text-sm h-8 md:h-9 font-semibold",
+                "rounded-lg md:rounded-xl transition-all text-[11px] sm:text-xs md:text-sm h-8 md:h-9 font-semibold px-1 sm:px-2 truncate",
                 isSingleBankMode ? "text-emerald-300 bg-white/15 border border-emerald-400/30" : "text-white/60 hover:text-white hover:bg-white/10"
               )}
               title="Toggle Single Bank Mode (Merges all bank amounts into one single tile)"
             >
-              <Layers className="w-3 h-3 mr-1.5 md:mr-2" />
-              Single Bank: {isSingleBankMode ? 'ON' : 'OFF'}
+              <Layers className="w-3 h-3 mr-1 md:mr-1.5 shrink-0" />
+              <span className="truncate">Single Bank: {isSingleBankMode ? 'ON' : 'OFF'}</span>
             </Button>
           </div>
 
